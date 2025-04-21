@@ -1,0 +1,57 @@
+{
+  "name": "openscribe",
+  "version": "1.0.0",
+  "description": "A screen recording and documentation tool",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "start": "cross-env NODE_ENV=development electron .",
+    "build": "tsc && npm run copy-files",
+    "copy-files": "copyfiles -f src/renderer/index.html dist/renderer/ && copyfiles -f src/renderer/styles/*.css dist/renderer/styles/",
+    "watch": "tsc -w",
+    "lint": "eslint . --ext .ts,.tsx",
+    "test": "jest",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@types/node": "^18.19.0",
+    "@types/sharp": "^0.32.0",
+    "@typescript-eslint/eslint-plugin": "^7.1.0",
+    "@typescript-eslint/parser": "^7.1.0",
+    "copyfiles": "^2.4.1",
+    "cross-env": "^7.0.3",
+    "electron": "^25.9.8",
+    "electron-builder": "^24.12.0",
+    "electron-rebuild": "^3.2.9",
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "global-mouse-events": "^1.2.0",
+    "node-abi": "^3.54.0",
+    "screenshot-desktop": "^1.15.0",
+    "sharp": "^0.33.2"
+  },
+  "build": {
+    "appId": "com.openscribe.app",
+    "productName": "OpenScribe",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    }
+  }
+}

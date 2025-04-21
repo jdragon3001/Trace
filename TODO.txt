@@ -1,0 +1,68 @@
+# OpenScribe TODO List
+
+## Completed Tasks
+1. [x] Project Setup
+    - [x] Initialize new Electron project
+    - [x] Configure TypeScript
+    - [x] Set up build pipeline with electron-builder
+    - [x] Configure development environment
+
+2. [x] Core Recording Engine Setup
+    - [x] Create RecordingService structure
+    - [x] Implement ScreenshotService
+    - [x] Create ImageService for circle drawing
+    - [x] Set up shared types and constants
+
+3. [x] Rebuild STRUCTURE.md based on current file structure
+
+## Immediate Tasks (Next 24-48 hours)
+1. Recording Engine Implementation
+   - [ ] Install and configure iohook
+   - [ ] Test screenshot capture service
+   - [ ] Verify circle drawing functionality
+   - [ ] Implement multi-monitor support
+
+2. Basic UI Implementation
+   - [ ] Create recording control bar
+   - [ ] Implement step list component
+   - [ ] Add basic step editing interface
+   - [ ] Setup dark/light mode toggle
+
+3. Core State Management
+   - [ ] Setup Zustand store
+   - [ ] Create recording state slice
+   - [ ] Implement step management slice
+   - [ ] Add settings state management
+
+## Short-term Tasks (1-2 weeks)
+1. Step Management System
+   - [ ] Implement drag-and-drop reordering
+   - [ ] Add step merging functionality
+   - [ ] Create step annotation system
+   - [ ] Add keyboard shortcuts
+
+2. Export System
+   - [ ] Create DOCX export template
+   - [ ] Implement PDF export
+   - [ ] Add image optimization
+   - [ ] Create progress tracking UI
+
+3. File Management
+   - [ ] Implement auto-save system
+   - [ ] Add file recovery mechanism
+   - [ ] Create temporary file cleanup
+   - [ ] Setup settings persistence
+
+## Notes
+- Priority: Recording experience should be smooth and reliable
+- Focus on core functionality before adding advanced features
+- Keep performance in mind throughout development
+- Consider user feedback mechanisms
+- Clarify primary build tool: `forge.config.js` exists, but `electron-builder` is mentioned in tasks.
+- Consolidate or remove `NEXT_STEPS.md` as it seems redundant with this file.
+
+## Completed Tasks
+- [x] Project structure setup
+- [x] Initial repository creation
+- [x] Basic documentation
+- [x] Rebuild STRUCTURE.md 

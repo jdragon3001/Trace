@@ -1,0 +1,66 @@
+# OpenScribe Deprecated Patterns
+
+## Electron Patterns to Avoid
+- Direct use of `remote` module (deprecated in Electron 14+)
+  - Use IPC (ipcMain/ipcRenderer) instead
+- Enabling `nodeIntegration` in webPreferences
+  - Use preload scripts and contextBridge
+- Using `webSecurity: false`
+  - Always maintain proper web security measures
+
+## React Patterns to Avoid
+- Class components for new code
+  - Use functional components with hooks
+- Direct DOM manipulation
+  - Use React refs and state management
+- Unsafe lifecycle methods
+  - Use useEffect and other hooks
+
+## State Management
+- Direct Redux usage without toolkit
+  - Use Redux Toolkit or Zustand
+- Global state for local concerns
+  - Use local state or context where appropriate
+- Prop drilling
+  - Use proper state management solutions
+
+## File Operations
+- Synchronous file operations
+  - Use async/await with proper error handling
+- Direct path manipulation
+  - Use path.join() and proper path utilities
+- Storing sensitive data in plain text
+  - Use proper encryption and secure storage
+
+## UI/UX Patterns
+- Direct window.alert() or window.confirm()
+  - Use custom modal components
+- Non-accessible components
+  - Ensure ARIA attributes and keyboard navigation
+- Hard-coded strings
+  - Use string constants or i18n system
+
+## Testing
+- snapshot tests as primary testing strategy
+  - Use behavioral testing
+- Testing implementation details
+  - Test component behavior and user interactions
+
+## Build and Packaging
+- Manual version management
+  - Use semantic versioning with automated tools
+- Direct electron-packager usage
+  - Use electron-builder with proper configuration
+
+## Security
+- Disabling contextIsolation
+  - Always maintain context isolation
+- Enabling allowRunningInsecureContent
+  - Never allow insecure content
+- Using eval() or new Function()
+  - Use safer alternatives
+
+## Notes
+- This list will be updated as new patterns are deprecated
+- Always check Electron and React documentation for latest best practices
+- Security considerations should always take precedence 

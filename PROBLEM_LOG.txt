@@ -1,0 +1,31 @@
+# OpenScribe Problem Log
+
+## Current Challenges
+
+### Recording Engine
+- Need to investigate optimal screenshot capture frequency without impacting system performance
+- Multi-monitor support might require additional testing and edge case handling
+- Memory management during long recording sessions needs careful consideration
+
+### Performance Concerns
+- Large number of screenshots might cause memory issues
+- Need to determine best storage strategy for temporary files
+- Image optimization vs quality trade-offs need to be balanced
+
+### Cross-Platform Compatibility
+- iohook event handling might vary across different Windows versions
+- Screen capture APIs might behave differently on various hardware configurations
+
+## Resolved Issues
+- None yet (project in initial setup phase)
+
+## Investigation Needed
+1. Best practices for handling system-wide keyboard hooks
+2. Optimal image compression strategy for different types of screenshots
+3. Most efficient IPC patterns for main/renderer process communication
+4. Auto-update mechanism security considerations
+
+## Notes
+- Regular performance profiling will be needed
+- Consider implementing detailed logging for debugging
+- Plan for automated stress testing 
