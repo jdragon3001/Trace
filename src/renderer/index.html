@@ -12,6 +12,9 @@
             margin: 20px;
             background-color: #f0f0f0;
         }
+        h1 {
+            margin-bottom: 10px;
+        }
         .controls {
             margin-bottom: 20px;
             padding: 10px;
@@ -44,6 +47,7 @@
             padding: 20px;
             border-radius: 5px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            min-height: 50px; /* Ensure the box is visible even when empty */
         }
         .step-item {
             margin-bottom: 10px;
@@ -53,19 +57,15 @@
         }
         /* Modal Styles */
         .modal {
-            display: none; /* Hidden by default */
-            position: fixed; /* Stay in place */
-            z-index: 1000; /* Sit on top */
+            display: none;
+            position: fixed;
+            z-index: 1000;
             left: 0;
             top: 0;
-            width: 100vw; /* Full viewport width */
-            height: 100vh; /* Full viewport height */
-            overflow: hidden; /* Hide parts of image outside viewport */
-            background-color: rgba(0,0,0,0.85); /* Darker background */
-            /* Add flexbox centering */
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background-color: rgba(0,0,0,0.85);
             cursor: zoom-out;
         }
         .modal-content {
@@ -76,10 +76,10 @@
             transition: transform 0.1s ease-out;
             cursor: grab;
             will-change: transform;
-            transform-origin: 0 0; /* Set transform origin to top-left */
+            transform-origin: 0 0;
         }
-        .modal-content.grabbing { /* Style when panning */
-             cursor: grabbing;
+        .modal-content.grabbing {
+            cursor: grabbing;
         }
         .modal-close {
             position: absolute;
@@ -100,10 +100,9 @@
     </style>
   </head>
   <body>
-    <div id="root">
-      <h1>Welcome to OpenScribe</h1>
-      <p>Screen recording and documentation tool</p>
-    </div>
+    <h1>Welcome to OpenScribe</h1>
+    <p>Screen recording and documentation tool</p>
+    
     <div class="controls">
         <button id="startBtn">Start Recording</button>
         <button id="pauseBtn">Pause</button>
