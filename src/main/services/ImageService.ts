@@ -1,10 +1,14 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import sharp from 'sharp';
 import { MousePosition } from '../../shared/types';
 
-class ImageService {
+export class ImageService {
   private readonly CIRCLE_SIZE = 24; // pixels
   private readonly CIRCLE_COLOR = { r: 255, g: 0, b: 0, alpha: 1 }; // Red
   private readonly TEXT_COLOR = { r: 255, g: 255, b: 255, alpha: 1 }; // White
+
+  constructor(private tempDir: string) {}
 
   public async drawCircle(
     imagePath: string,
@@ -12,8 +16,7 @@ class ImageService {
     stepNumber: number
   ): Promise<void> {
     try {
-      const fs = require('fs').promises;
-      const imageBuffer = await fs.readFile(imagePath);
+      const imageBuffer = await fs.promises.readFile(imagePath);
       const image = sharp(imageBuffer);
 
       const metadata = await image.metadata();
@@ -41,7 +44,7 @@ class ImageService {
         .toBuffer();
 
       // Write the modified buffer back to the original file path
-      await fs.writeFile(imagePath, modifiedImageBuffer);
+      await fs.promises.writeFile(imagePath, modifiedImageBuffer);
     } catch (error) {
       console.error('Failed to draw circle:', error);
       throw new Error('Failed to draw circle on image');
@@ -75,4 +78,4 @@ class ImageService {
   }
 }
 
-export default new ImageService(); 
+export default new ImageService(process.env.TEMP_DIR || ''); 

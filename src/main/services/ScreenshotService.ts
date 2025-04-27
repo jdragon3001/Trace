@@ -1,14 +1,18 @@
-import { screen } from 'electron';
+import { /*screen,*/ desktopCapturer } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import screenshot from 'screenshot-desktop';
-import { app } from 'electron';
+// import { app } from 'electron'; // app is not needed here if dir is passed in
 
-class ScreenshotService {
+// Export the class directly
+export class ScreenshotService {
   private screenshotDir: string;
 
-  constructor() {
-    this.screenshotDir = path.join(app.getPath('userData'), 'screenshots');
+  // Accept directory path in constructor
+  constructor(screenshotDir: string) {
+    // Use the provided directory path
+    // this.screenshotDir = path.join(app.getPath('userData'), 'screenshots');
+    this.screenshotDir = screenshotDir;
     this.ensureScreenshotDir();
   }
 
@@ -20,18 +24,14 @@ class ScreenshotService {
     }
   }
 
-  public async captureScreenshot(): Promise<string> {
+  // Renamed from captureScreenshot to match RecordingService usage
+  public async captureScreen(filepath: string): Promise<void> {
     try {
-      // Generate unique filename
-      const timestamp = Date.now();
-      const filename = `screenshot_${timestamp}.png`;
-      const filepath = path.join(this.screenshotDir, filename);
-
       // Capture screenshot
       const buffer = await screenshot();
+      // Use the full filepath provided by the caller
       await fs.writeFile(filepath, buffer);
-
-      return filepath;
+      console.log(`Screenshot saved to: ${filepath}`);
     } catch (error) {
       console.error('Failed to capture screenshot:', error);
       throw new Error('Screenshot capture failed');
@@ -41,7 +41,7 @@ class ScreenshotService {
   public async cleanup(): Promise<void> {
     try {
       const files = await fs.readdir(this.screenshotDir);
-      const deletePromises = files.map(file => 
+      const deletePromises = files.map(file =>
         fs.unlink(path.join(this.screenshotDir, file))
       );
       await Promise.all(deletePromises);
@@ -51,4 +51,5 @@ class ScreenshotService {
   }
 }
 
-export default new ScreenshotService(); 
+// Remove the default instance export
+// export default new ScreenshotService(); 

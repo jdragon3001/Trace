@@ -21,6 +21,6 @@
       "@/*": ["*"]
     }
   },
-  "include": ["src"],
+  "include": ["src/**/*", "src/renderer/index.tsx"],
   "exclude": ["node_modules", "dist"]
 } 

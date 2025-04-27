@@ -3,9 +3,19 @@
 ## Current Challenges
 
 ### Recording Engine
+- **Global Input Hooks:** Switched from `global-mouse-events` (which failed to deliver events despite apparent successful initialization) to `uiohook-napi` for capturing mouse clicks. Need to verify `uiohook-napi` reliability and integrate the UI checkbox state.
 - Need to investigate optimal screenshot capture frequency without impacting system performance
 - Multi-monitor support might require additional testing and edge case handling
 - Memory management during long recording sessions needs careful consideration
+- **Multiple Step Creation On Single Click:** Fixed an issue where a single click would create multiple step entries (approximately 4 per click). Implemented debouncing with a 1-second threshold to prevent duplicate steps from being created in quick succession. This ensures that only one step is captured per user interaction.
+
+### React Component Issues
+- **Tab State Loss During Switching:** Fixed an issue where switching between tabs (Record, Edit Steps, Export) would cause the tabs to lose their state. Implemented a tabsState object in App.tsx that properly preserves each tab's state and visibility, allowing users to start recording, switch tabs, and then return to continue or stop recording without losing context.
+- **Duplicate React Keys:** Fixed React warning about duplicate keys in the steps list. The original ID generation method using timestamp+number was causing collisions. Implemented a more robust unique ID generation approach using timestamp plus a random string, and added duplicate checking in the Zustand store to prevent duplicate entries.
+
+### Build/Configuration Issues (Electron Forge + Webpack)
+- **Persistent Preload Script Load Failure:** Despite various configuration attempts (manual path calculation, Forge magic variables, explicit Webpack output settings, simplified source file), the preload script (`src/preload.ts`) is consistently failing to be built and/or loaded correctly during `electron-forge start`. The main process cannot find the expected compiled file (`.webpack/preload/main_preload.js`), resulting in an ENOENT error. The `MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY` variable also points to an incorrect location.
+- **~~Persistent~~ Tailwind CSS Styling Failure (Likely Resolved):** Tailwind styles ~~are not~~ were previously not being applied in the renderer process during development (`electron-forge start`). ~~Basic CSS loading works, but including `postcss-loader` (with correct config for `@tailwindcss/postcss` and `autoprefixer`) results in unstyled components. Network tab shows no CSS loaded.~~ This seems to have been caused by caching issues within Electron Forge or Webpack's development server. Deleting the `.webpack` directory and restarting the development server (`npm start`) resolved the immediate problem. Further monitoring is needed to ensure it doesn't recur.
 
 ### Performance Concerns
 - Large number of screenshots might cause memory issues
@@ -17,7 +27,9 @@
 - Screen capture APIs might behave differently on various hardware configurations
 
 ## Resolved Issues
-- None yet (project in initial setup phase)
+- **Multiple Step Creation:** Fixed by implementing debouncing in the RecordingService mouseUpHandler
+- **Tab State Persistence:** Fixed by updating App component to maintain independent tab states
+- **Duplicate React Keys:** Fixed by implementing more robust unique ID generation
 
 ## Investigation Needed
 1. Best practices for handling system-wide keyboard hooks
@@ -28,4 +40,26 @@
 ## Notes
 - Regular performance profiling will be needed
 - Consider implementing detailed logging for debugging
-- Plan for automated stress testing 
+- Plan for automated stress testing
+
+# Problem Log
+
+This file tracks persistent issues encountered during development that require further investigation or have proven difficult to resolve.
+
+*   **Date:** 2024-04-27
+    *   **Problem:** Multiple steps created on single click and tab state not persisting when switching tabs
+    *   **Context:** Clicking during recording would add approximately 4 steps instead of 1, and switching between tabs would cause the recording state to be lost
+    *   **Difficulty:** The issue was likely caused by multiple uIOhook events firing for a single click and the lack of proper tab state persistence in the React component architecture
+    *   **Status:** Resolved - Added debouncing to click handling in RecordingService and implemented tab state persistence in App.tsx
+
+*   **Date:** 2024-04-27
+    *   **Problem:** React warning about duplicate keys in steps list
+    *   **Context:** Console showing errors when steps are created: "Encountered two children with the same key"
+    *   **Difficulty:** The timestamp + step number approach for ID generation was creating collisions due to rapid step creation and multiple tabs rendering the same steps
+    *   **Status:** Resolved - Implemented more robust unique ID generation with timestamp + random string, and added duplicate checking in the store
+
+*   **Date:** YYYY-MM-DD
+    *   **Problem:** Describe the issue.
+    *   **Context:** Where/when does it occur? What has been tried?
+    *   **Difficulty:** Why is it hard to solve? (e.g., library bug, complex interaction, lack of information)
+    *   **Status:** Open / Investigating / Resolved / Workaround 

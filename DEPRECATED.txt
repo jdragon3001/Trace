@@ -63,4 +63,15 @@
 ## Notes
 - This list will be updated as new patterns are deprecated
 - Always check Electron and React documentation for latest best practices
-- Security considerations should always take precedence 
+- Security considerations should always take precedence
+
+# Code Patterns to Avoid
+
+This file lists code patterns, libraries, or specific functions that are deprecated or considered insecure within this project. Developers should avoid using these patterns and update existing code when encountered.
+
+*   **Pattern/Library/Function:** `Example.deprecatedFunction()`
+    *   **Reason:** Security vulnerability CVE-XXXX-XXXX / Performance issues / Replaced by `NewExample.betterFunction()`
+    *   **Replacement:** `NewExample.betterFunction()` or alternative approach.
+    *   **Date Deprecated:** YYYY-MM-DD
+
+--- 

@@ -1,26 +1,40 @@
 export const IpcChannels = {
   // Recording control
-  START_RECORDING: 'recording:start',
-  STOP_RECORDING: 'recording:stop',
-  PAUSE_RECORDING: 'recording:pause',
+  START_RECORDING: 'recording:start' as const,
+  STOP_RECORDING: 'recording:stop' as const,
+  PAUSE_RECORDING: 'recording:pause' as const,
+  RESUME_RECORDING: 'recording:resume' as const,
+  RECORDING_STATUS: 'recording:status' as const,
   
   // Step management
-  STEP_CREATED: 'step:created',
-  STEP_UPDATED: 'step:updated',
-  STEP_DELETED: 'step:deleted',
+  GET_STEPS: 'steps:get' as const,
+  ADD_STEP: 'steps:add' as const,
+  STEP_CREATED: 'step:created' as const,
+  STEP_UPDATED: 'step:updated' as const,
+  STEP_DELETED: 'step:deleted' as const,
   
-  // Error handling
-  RECORDING_ERROR: 'recording:error',
-  
-  // Settings
-  SETTINGS_UPDATED: 'settings:updated',
+  // Project Management
+  SAVE_PROJECT: 'project:save' as const,
+  LOAD_PROJECT: 'project:load' as const,
   
   // Export
-  EXPORT_START: 'export:start',
-  EXPORT_PROGRESS: 'export:progress',
-  EXPORT_COMPLETE: 'export:complete',
-  EXPORT_ERROR: 'export:error'
+  EXPORT_PROJECT: 'project:export' as const,
+  EXPORT_PROGRESS: 'export:progress' as const,
+  EXPORT_COMPLETE: 'export:complete' as const,
+  EXPORT_ERROR: 'export:error' as const,
+  
+  // System / Permissions
+  GET_MEDIA_ACCESS_STATUS: 'system:get-media-access' as const,
+  
+  // Error handling
+  RECORDING_ERROR: 'recording:error' as const,
+  
+  // Settings
+  SETTINGS_UPDATED: 'settings:updated' as const,
 } as const;
+
+// Re-export for type safety
+export type IpcChannel = typeof IpcChannels[keyof typeof IpcChannels];
 
 export const DEFAULT_SETTINGS = {
   circleSize: 24,
