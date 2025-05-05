@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useStepsStore } from '../store/useStepsStore';
 
 // Placeholder icon
 const ImageIcon = () => <svg className="w-16 h-16 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>;
@@ -26,7 +27,11 @@ const ToggleSwitch: React.FC<{ label: string; enabled: boolean; onChange: (enabl
   );
 };
 
-export const ExportTab: React.FC = () => {
+interface ExportTabProps {
+  tutorialId?: string;
+}
+
+export const ExportTab: React.FC<ExportTabProps> = ({ tutorialId }) => {
   // TODO: Implement state and handlers for export settings, format selection, preview, etc.
   const [docTitle, setDocTitle] = useState('My Documentation');
   const [includeScreenshots, setIncludeScreenshots] = useState(true);
@@ -37,6 +42,8 @@ export const ExportTab: React.FC = () => {
     console.log(`Exporting as ${exportFormat} with title: ${docTitle}, screenshots: ${includeScreenshots}, numbers: ${includeStepNumbers}`);
     // Call actual export logic
   };
+
+  // You can use the tutorialId to load steps for the specific tutorial
 
   return (
     <div className="p-6 bg-white h-full flex space-x-6">

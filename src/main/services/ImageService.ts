@@ -76,6 +76,43 @@ export class ImageService {
       </svg>
     `;
   }
+
+  /**
+   * Reads an image file and converts it to a base64 data URL
+   * @param filePath Path to the image file
+   * @returns A promise that resolves to a base64 data URL string
+   */
+  public static async imagePathToDataUrl(filePath: string): Promise<string> {
+    try {
+      // Ensure the file exists
+      if (!fs.existsSync(filePath)) {
+        console.error(`File does not exist: ${filePath}`);
+        return '';
+      }
+
+      // Read the file as a buffer
+      const data = fs.readFileSync(filePath);
+      
+      // Determine MIME type based on file extension
+      const ext = path.extname(filePath).toLowerCase();
+      let mimeType = 'image/png'; // Default to PNG
+      
+      if (ext === '.jpg' || ext === '.jpeg') {
+        mimeType = 'image/jpeg';
+      } else if (ext === '.gif') {
+        mimeType = 'image/gif';
+      } else if (ext === '.webp') {
+        mimeType = 'image/webp';
+      }
+      
+      // Convert to base64 data URL
+      const base64Data = data.toString('base64');
+      return `data:${mimeType};base64,${base64Data}`;
+    } catch (error) {
+      console.error('Error converting image to data URL:', error);
+      return '';
+    }
+  }
 }
 
 export default new ImageService(process.env.TEMP_DIR || ''); 

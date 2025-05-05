@@ -12,21 +12,101 @@ const ScreenIcon = () => (
 interface RecordingState {
   isRecording: boolean;
   isPaused: boolean;
+  currentStep: number;
+  steps: RecordingStep[];
 }
 
-export const RecordingTab: React.FC = () => {
+interface RecordingTabProps {
+  projectId?: string;
+  tutorialId?: string;
+}
+
+export const RecordingTab: React.FC<RecordingTabProps> = ({ projectId, tutorialId }) => {
   const [recordingState, setRecordingState] = useState<RecordingState>({
     isRecording: false,
-    isPaused: false
+    isPaused: false,
+    currentStep: 0,
+    steps: []
   });
+  const [error, setError] = useState<string | null>(null);
+  const [debugInfo, setDebugInfo] = useState<string>("");
+  const [currentProjectId, setCurrentProjectId] = useState<string | undefined>(projectId);
+  const [currentTutorialId, setCurrentTutorialId] = useState<string | undefined>(tutorialId);
+
+  // Update local state when props change
+  useEffect(() => {
+    if (projectId !== currentProjectId) {
+      setCurrentProjectId(projectId);
+    }
+    if (tutorialId !== currentTutorialId) {
+      setCurrentTutorialId(tutorialId);
+    }
+  }, [projectId, tutorialId, currentProjectId, currentTutorialId]);
+
+  // Add more comprehensive debug info
+  useEffect(() => {
+    const info = `Debug Info:
+    - projectId: ${currentProjectId || 'undefined'}
+    - tutorialId: ${currentTutorialId || 'undefined'}
+    - isRecording: ${recordingState.isRecording}
+    - isPaused: ${recordingState.isPaused}`;
+    
+    console.log(info);
+    setDebugInfo(info);
+  }, [currentProjectId, currentTutorialId, recordingState]);
+
+  // Fetch current tutorial and project data if they're not set properly
+  useEffect(() => {
+    const fetchCurrentData = async () => {
+      try {
+        // If we have a tutorialId but no projectId, try to get the correct projectId
+        if (currentTutorialId && !currentProjectId) {
+          console.log('[RecordingTab] We have tutorialId but no projectId, fetching current tutorial');
+          const tutorial = await window.electronAPI?.getCurrentTutorial();
+          if (tutorial && tutorial.projectId) {
+            console.log(`[RecordingTab] Retrieved projectId ${tutorial.projectId} from tutorial`);
+            setCurrentProjectId(tutorial.projectId);
+          }
+        }
+      } catch (err) {
+        console.error('[RecordingTab] Error fetching current data:', err);
+      }
+    };
+
+    fetchCurrentData();
+  }, [currentTutorialId, currentProjectId]);
+
+  useEffect(() => {
+    // Check if we have both a project and tutorial selected
+    if (!currentProjectId || !currentTutorialId) {
+      console.log(`[RecordingTab] Missing project or tutorial: projectId=${currentProjectId}, tutorialId=${currentTutorialId}`);
+      setError('Please select a project and tutorial before recording.');
+    } else {
+      console.log(`[RecordingTab] Project and tutorial selected: projectId=${currentProjectId}, tutorialId=${currentTutorialId}`);
+      setError(null);
+      // No auto-start behavior - wait for user to click Start Recording
+    }
+  }, [currentProjectId, currentTutorialId]);
 
   useEffect(() => {
     console.log('[RecordingTab] Adding listeners...');
     console.log('Checking window.electronAPI:', window.electronAPI);
 
-    const handleRecordingStatus = (state: RecordingState) => {
+    const handleRecordingStatus = (state: { 
+      isRecording: boolean; 
+      isPaused: boolean; 
+      currentStep?: number; 
+      steps?: any[] 
+    }) => {
       console.log('[RecordingTab] Received recording-status:', state);
-      setRecordingState(state);
+      // Map the state to our RecordingState interface
+      const mappedState: RecordingState = {
+        isRecording: state.isRecording || false,
+        isPaused: state.isPaused || false,
+        currentStep: state.currentStep || 0,
+        steps: state.steps || []
+      };
+      setRecordingState(mappedState);
     };
 
     const handleRecordingError = (error: string) => {
@@ -35,10 +115,15 @@ export const RecordingTab: React.FC = () => {
     };
 
     const handleStepCreated = (step: RecordingStep) => {
-        console.log('[RecordingTab] Received step:created (but handling in StepsTab):', step);
-        // NOTE: Actual step handling is likely in StepsTab, 
-        // but we add the listener call here for consistency if needed later.
-        // Or, remove this if RecordingTab truly doesn't need to know about new steps.
+        console.log('[RecordingTab] Received step:created:', step);
+        
+        // Save step to database when created during recording
+        if (currentTutorialId) {
+            console.log(`[RecordingTab] Saving step to database for tutorial ${currentTutorialId}`);
+            saveStepToDatabase(step, currentTutorialId);
+        } else {
+            console.warn('[RecordingTab] Cannot save step - no tutorial ID');
+        }
     };
 
     const removeStatusListener = window.electronAPI?.onRecordingStatus(handleRecordingStatus); 
@@ -51,19 +136,70 @@ export const RecordingTab: React.FC = () => {
       removeErrorListener?.();
       removeStepListener?.();
     };
-  }, []);
+  }, [currentTutorialId]); // Add currentTutorialId to dependency array
+
+  // Function to save steps to the database
+  const saveStepToDatabase = async (step: RecordingStep, tutorialId: string) => {
+    try {
+        console.log(`[RecordingTab] Saving step ${step.id} to database for tutorial ${tutorialId}`);
+        
+        // Convert RecordingStep to database Step format
+        const dbStep = {
+            tutorialId: tutorialId,
+            order: step.number,
+            screenshotPath: step.screenshotPath,
+            actionText: step.description || '',
+            timestamp: step.timestamp,
+            mousePosition: step.mousePosition,
+            windowTitle: step.windowTitle || '',
+            keyboardShortcut: step.keyboardShortcut || ''
+        };
+
+        // Save step to database
+        const savedStep = await window.electronAPI.saveStep(dbStep);
+        
+        if (savedStep) {
+            console.log(`[RecordingTab] Successfully saved step to database with ID: ${savedStep.id}`);
+        } else {
+            console.error('[RecordingTab] Failed to save step to database - no response');
+        }
+    } catch (error) {
+        console.error('[RecordingTab] Error saving step to database:', error);
+    }
+  };
 
   const handleStartRecording = async () => {
     try {
+      console.log(`[RecordingTab] handleStartRecording called - isRecording: ${recordingState.isRecording}, isPaused: ${recordingState.isPaused}`);
+      console.log(`[RecordingTab] Current projectId=${currentProjectId}, tutorialId=${currentTutorialId}`);
+      
+      if (!currentProjectId || !currentTutorialId) {
+        const errorMsg = "Cannot start recording: Missing project or tutorial ID";
+        console.error(errorMsg);
+        setError(errorMsg);
+        return;
+      }
+      
       if (!recordingState.isRecording) {
-        await window.electronAPI?.startRecording();
+        console.log('[RecordingTab] Starting recording...');
+        try {
+          await window.electronAPI?.startRecording();
+          console.log('[RecordingTab] startRecording IPC call completed');
+        } catch (e) {
+          console.error('[RecordingTab] Error calling startRecording:', e);
+          setError(`Failed to start recording: ${e}`);
+        }
       } else if (recordingState.isPaused) {
+        console.log('[RecordingTab] Resuming recording...');
         await window.electronAPI?.resumeRecording();
       } else {
+        console.log('[RecordingTab] Pausing recording...');
         await window.electronAPI?.pauseRecording();
       }
     } catch (error) {
-      console.error('Failed to handle recording action:', error);
+      const errorMsg = `Failed to handle recording action: ${error}`;
+      console.error(errorMsg);
+      setError(errorMsg);
     }
   };
 
@@ -91,6 +227,65 @@ export const RecordingTab: React.FC = () => {
     }
     return <PlayIconSolid className="w-5 h-5 mr-2" />;
   };
+
+  // Add handler for manually retrying with current tutorial
+  const handleRetryWithSelectedTutorial = async () => {
+    try {
+      // Try to get the current tutorial data again
+      const tutorial = await window.electronAPI?.getCurrentTutorial();
+      console.log('[RecordingTab] Current tutorial on retry:', tutorial);
+      
+      if (tutorial && tutorial.id) {
+        if (tutorial.projectId) {
+          setCurrentProjectId(tutorial.projectId);
+        }
+        setCurrentTutorialId(tutorial.id);
+        setError(null);
+      } else {
+        setError('Could not retrieve valid tutorial data');
+      }
+    } catch (err) {
+      console.error('[RecordingTab] Error on retry:', err);
+      setError(`Error retrieving tutorial data: ${err}`);
+    }
+  };
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-8 bg-white">
+        <div className="bg-red-50 border-l-4 border-red-400 p-4 rounded mb-6">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-red-700">
+                {error}
+              </p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-gray-100 p-4 rounded mb-6 text-xs font-mono whitespace-pre">
+          {debugInfo}
+        </div>
+        
+        <p className="text-gray-600 max-w-md text-center">
+          You need to select a project and create a tutorial before you can start recording. 
+          Use the sidebar to select or create a project, then create a new tutorial.
+        </p>
+        
+        <button
+          onClick={handleRetryWithSelectedTutorial}
+          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+        >
+          Retry with selected tutorial
+        </button>
+      </div>
+    );
+  }
 
   // Keep only the central content area, remove the outer flex div
   // Style this div to match the screenshot's central area

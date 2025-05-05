@@ -15,8 +15,8 @@ try {
     onStepCreated: (callback: (step: any) => void) => {
       ipcRenderer.on(IpcChannels.STEP_CREATED, (_event, step) => callback(step));
     },
-    onRecordingStatus: (callback: (state: { isRecording: boolean; isPaused: boolean }) => void) => {
-        const listener = (_event: IpcRendererEvent, state: { isRecording: boolean; isPaused: boolean }) => callback(state);
+    onRecordingStatus: (callback: (state: { isRecording: boolean; isPaused: boolean; currentStep: number; steps: any[] }) => void) => {
+        const listener = (_event: IpcRendererEvent, state: { isRecording: boolean; isPaused: boolean; currentStep: number; steps: any[] }) => callback(state);
         ipcRenderer.on(IpcChannels.RECORDING_STATUS, listener);
         return () => {
             ipcRenderer.removeListener(IpcChannels.RECORDING_STATUS, listener);
@@ -25,13 +25,41 @@ try {
     onRecordingError: (callback: (error: string) => void) => {
       ipcRenderer.on(IpcChannels.RECORDING_ERROR, (_event, error) => callback(error));
     },
-    getSteps: (): Promise<unknown[]> => ipcRenderer.invoke('get-steps'),
-    addStep: (step: unknown) => ipcRenderer.send('add-step', step),
+    getSteps: (): Promise<unknown[]> => ipcRenderer.invoke(IpcChannels.GET_STEPS),
+    addStep: (step: unknown) => ipcRenderer.send(IpcChannels.ADD_STEP, step),
     getAudioSources: (): Promise<unknown[]> => ipcRenderer.invoke('get-audio-sources'),
-    saveProject: (steps: unknown[], filePath?: string) => ipcRenderer.invoke('save-project', steps, filePath),
-    loadProject: (filePath: string): Promise<unknown> => ipcRenderer.invoke('load-project', filePath),
+    // Project Management APIs
+    getProjects: () => ipcRenderer.invoke(IpcChannels.GET_PROJECTS),
+    getRecentProjects: () => ipcRenderer.invoke(IpcChannels.GET_RECENT_PROJECTS),
+    createProject: (name: string, description?: string) => ipcRenderer.invoke(IpcChannels.CREATE_PROJECT, name, description),
+    saveProject: (steps: unknown[], filePath?: string) => ipcRenderer.invoke(IpcChannels.SAVE_PROJECT, steps, filePath),
+    loadProject: (filePath: string): Promise<unknown> => ipcRenderer.invoke(IpcChannels.LOAD_PROJECT, filePath),
+    deleteProject: (projectId: string) => ipcRenderer.invoke(IpcChannels.DELETE_PROJECT, projectId),
+    
+    // Tutorial Management APIs
+    createTutorial: (projectId: string, title: string) => ipcRenderer.invoke(IpcChannels.CREATE_TUTORIAL, projectId, title),
+    getTutorialsByProject: (projectId: string) => ipcRenderer.invoke(IpcChannels.GET_TUTORIALS_BY_PROJECT, projectId),
+    getTutorial: (tutorialId: string) => ipcRenderer.invoke(IpcChannels.GET_TUTORIAL, tutorialId),
+    deleteTutorial: (tutorialId: string) => ipcRenderer.invoke(IpcChannels.DELETE_TUTORIAL, tutorialId),
+    
+    // Step Management APIs
+    saveStep: (step: unknown) => ipcRenderer.invoke(IpcChannels.SAVE_STEP, step),
+    getStepsByTutorial: (tutorialId: string) => ipcRenderer.invoke(IpcChannels.GET_STEPS_BY_TUTORIAL, tutorialId),
+    updateStep: (step: unknown) => ipcRenderer.invoke(IpcChannels.UPDATE_STEP, step),
+    deleteStep: (stepId: string) => ipcRenderer.invoke(IpcChannels.DELETE_STEP, stepId),
+    reorderSteps: (steps: unknown[]) => ipcRenderer.invoke(IpcChannels.REORDER_STEPS, steps),
+    
+    // State Management APIs
+    getCurrentProject: () => ipcRenderer.invoke(IpcChannels.GET_CURRENT_PROJECT),
+    getCurrentTutorial: () => ipcRenderer.invoke(IpcChannels.GET_CURRENT_TUTORIAL),
+    setCurrentProject: (projectId: string) => ipcRenderer.invoke(IpcChannels.SET_CURRENT_PROJECT, projectId),
+    setCurrentTutorial: (tutorialId: string) => ipcRenderer.invoke(IpcChannels.SET_CURRENT_TUTORIAL, tutorialId),
+    
+    // Export APIs
     exportProject: (format: string, steps: unknown[], filePath: string) => 
-      ipcRenderer.invoke('export-project', format, steps, filePath)
+      ipcRenderer.invoke(IpcChannels.EXPORT_PROJECT, format, steps, filePath),
+    loadImageAsDataUrl: (imagePath: string): Promise<string> => 
+      ipcRenderer.invoke('load-image-as-data-url', imagePath)
   });
   console.log('[Preload] window.electronAPI exposed successfully.');
 } catch (error) {

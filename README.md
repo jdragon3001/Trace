@@ -1,60 +1,79 @@
 # OpenScribe
 
-A Windows desktop application for creating step-by-step guides with automatic screenshots and annotations.
+OpenScribe is an Electron-based application for creating step-by-step guides with screenshots and annotations.
 
 ## Features
 
-- Record mouse clicks and keyboard shortcuts
-- Automatically capture screenshots
-- Add numbered circles to click locations
-- Edit and reorder steps
-- Export to DOCX or PDF
-- Dark mode support
+- Create projects and tutorials to organize your guides
+- Record step-by-step workflows with automatic screenshots
+- Add text descriptions, keyboard shortcuts, and annotations
+- Export guides as HTML, PDF, or Markdown documentation
 
-## Development Setup
+## Development
 
 ### Prerequisites
 
-- Node.js 18+
-- Windows 10 or later
-- Visual Studio Build Tools (for native modules)
+- Node.js 16.x or higher
+- npm 8.x or higher
 
-### Installation
+### Getting Started
 
-1. Clone the repository:
-```powershell
-git clone https://github.com/OpenScribe/openscribe-electron.git
-cd openscribe-electron
-```
-
+1. Clone the repository
 2. Install dependencies:
-```powershell
-npm install
-```
+   ```
+   npm install
+   ```
+3. Start the application:
+   ```
+   npm start
+   ```
 
-3. Start the development server:
-```powershell
-npm start
-```
+### Database
 
-### Building
+OpenScribe uses SQLite for data storage, with the following structure:
+
+- **Projects**: Main organizational unit for related tutorials
+- **Tutorials**: Collection of steps for a specific guide
+- **Steps**: Individual actions with screenshots and descriptions
+- **Assets**: Images and other files used in tutorials
+
+The database file is stored in the user's application data directory:
+- Windows: `%APPDATA%\openscribe\openscribe\openscribe.db`
+- macOS: `~/Library/Application Support/openscribe/openscribe.db`
+- Linux: `~/.config/openscribe/openscribe.db`
+
+#### SQLite Considerations
+
+When working with the database code, keep these best practices in mind:
+
+1. Always quote reserved keywords like "order" in SQL statements
+2. Use async/await when interacting with database methods
+3. Implement proper error handling for database operations
+4. Check for existing records before insertion to prevent constraint violations
+
+### Building for Production
 
 To create a production build:
 
-```powershell
-npm run make
+```
+npm run package
 ```
 
-This will create installers in the `out` directory.
+This will generate platform-specific packages in the `out` directory.
 
-## Contributing
+## Recent Updates
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+### Database Architecture Redesign (2024-06-26)
+- Complete redesign of the database system to fix data consistency issues
+- Implemented repository pattern for better separation of concerns
+- Added proper transaction management with rollback on errors
+- Enhanced error handling and data validation
+- Implemented client-side repositories with caching for improved performance
+- Created data migration service to handle database upgrades
 
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. 
+### Error Handling Improvements (2024-07-01)
+- Enhanced step saving and loading process to ensure data persists when switching between pages
+- Improved error handling throughout the tutorial step management flow
+- Added visibility detection to reload steps when returning to the application
+- Implemented verification checks to confirm database operations complete successfully
+- Better error feedback to users when operations fail 

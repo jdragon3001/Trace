@@ -1,0 +1,14 @@
+# Python requirements for OpenScribe
+# These packages support native module building and other development tasks
+
+# For node-gyp and native module building
+setuptools>=65.5.1
+wheel>=0.38.4
+
+# If using any Python scripts for automation
+requests>=2.28.1
+pyyaml>=6.0
+
+# Optional: For any data processing tasks
+pandas>=1.5.2
+numpy>=1.23.5 

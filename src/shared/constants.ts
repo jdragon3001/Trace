@@ -16,6 +16,31 @@ export const IpcChannels = {
   // Project Management
   SAVE_PROJECT: 'project:save' as const,
   LOAD_PROJECT: 'project:load' as const,
+  GET_PROJECTS: 'project:get-all' as const,
+  GET_RECENT_PROJECTS: 'project:get-recent' as const,
+  CREATE_PROJECT: 'project:create' as const,
+  DELETE_PROJECT: 'project:delete' as const,
+  
+  // Tutorial Management
+  CREATE_TUTORIAL: 'tutorial:create' as const,
+  GET_TUTORIALS: 'tutorial:get-all' as const,
+  GET_TUTORIALS_BY_PROJECT: 'tutorial:get-by-project' as const,
+  DELETE_TUTORIAL: 'tutorial:delete' as const,
+  GET_CURRENT_TUTORIAL: 'tutorial:get-current' as const,
+  SET_CURRENT_TUTORIAL: 'tutorial:set-current' as const,
+  GET_TUTORIAL: 'tutorial:get' as const,
+  GET_RECENT_TUTORIALS: 'tutorial:get-recent' as const,
+  
+  // Enhanced Step Management
+  SAVE_STEP: 'step:save' as const,
+  GET_STEPS_BY_TUTORIAL: 'step:get-by-tutorial' as const,
+  UPDATE_STEP: 'step:update' as const,
+  DELETE_STEP: 'step:delete' as const,
+  REORDER_STEPS: 'step:reorder' as const,
+  
+  // State Management
+  GET_CURRENT_PROJECT: 'project:get-current' as const,
+  SET_CURRENT_PROJECT: 'project:set-current' as const,
   
   // Export
   EXPORT_PROJECT: 'project:export' as const,

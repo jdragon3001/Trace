@@ -11,6 +11,8 @@ module.exports = {
     'global-mouse-events': 'commonjs global-mouse-events',
     'sharp': 'commonjs sharp',
     'uiohook-napi': 'commonjs uiohook-napi',
+    'better-sqlite3': 'commonjs better-sqlite3',
+    'sqlite3': 'commonjs sqlite3',
     // Add other native modules here if they cause issues
   },
   resolve: {

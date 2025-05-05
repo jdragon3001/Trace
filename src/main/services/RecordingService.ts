@@ -18,7 +18,7 @@ function generateUniqueId(): string {
 export class RecordingService extends EventEmitter {
     private isRecording: boolean = false;
     private isPaused: boolean = false;
-    // private steps: RecordingStep[] = [];
+    private steps: RecordingStep[] = [];
     private stepCounter: number = 0;
     // private keyboardListener: GlobalKeyboardListener | null = null;
     private screenshotService: ScreenshotService;
@@ -36,6 +36,17 @@ export class RecordingService extends EventEmitter {
         this.initialize();
     }
 
+    // Allow getting all steps
+    public getSteps(): RecordingStep[] {
+        return this.steps;
+    }
+    
+    // Allow adding a step externally
+    public addStep(step: RecordingStep): void {
+        this.steps.push(step);
+        console.log(`Added step manually: Step ${step.number}`);
+    }
+
     private initialize(): void {
         this.setupDirectories();
         this.registerIpcHandlers();
@@ -49,14 +60,44 @@ export class RecordingService extends EventEmitter {
     }
 
     startRecording(): void {
-        if (this.isRecording) return;
-        console.log('Starting recording...');
-        this.isRecording = true;
-        this.isPaused = false;
-        this.stepCounter = 0;
-        this.lastCaptureTime = 0; // Reset capture time on start
-        this.emitStateUpdate();
-        this.registerShortcuts();
+        try {
+            if (this.isRecording) {
+                console.log('[RecordingService] startRecording called but already recording, ignoring');
+                return;
+            }
+            
+            console.log('[RecordingService] Starting recording...');
+            
+            // Check if screenshot directory is ready
+            if (!fs.existsSync(this.tempDir)) {
+                console.log(`[RecordingService] Creating temp directory: ${this.tempDir}`);
+                fs.mkdirSync(this.tempDir, { recursive: true });
+            }
+            
+            // Set recording state
+            this.isRecording = true;
+            this.isPaused = false;
+            this.stepCounter = 0;
+            this.lastCaptureTime = 0; // Reset capture time on start
+            
+            // Log debug info about current state
+            console.log(`[RecordingService] Recording state set: isRecording=${this.isRecording}, isPaused=${this.isPaused}`);
+            
+            // Update the UI with the new recording state
+            this.emitStateUpdate();
+            
+            // Register keyboard shortcuts for controlling recording
+            this.registerShortcuts();
+            
+            console.log('[RecordingService] Recording started successfully');
+        } catch (error) {
+            console.error('[RecordingService] Error starting recording:', error);
+            this.sendToRenderer(IpcChannels.RECORDING_ERROR, `Failed to start recording: ${error}`);
+            // Reset state in case of error
+            this.isRecording = false;
+            this.isPaused = false;
+            throw error;
+        }
     }
 
     stopRecording(): void {
@@ -86,10 +127,17 @@ export class RecordingService extends EventEmitter {
         const state = {
             isRecording: this.isRecording,
             isPaused: this.isPaused,
+            currentStep: this.stepCounter,
+            steps: this.steps,
         };
-        console.log('[RecordingService] Attempting to emit state update:', state); // Log before sending
+        console.log('[RecordingService] Emitting state update:', JSON.stringify({
+            isRecording: state.isRecording, 
+            isPaused: state.isPaused,
+            stepCount: this.steps.length,
+            currentStep: this.stepCounter
+        }));
         this.sendToRenderer(IpcChannels.RECORDING_STATUS, state);
-        console.log('[RecordingService] State update sent.'); // Log after sending
+        console.log('[RecordingService] State update sent.');
     }
 
     private sendToRenderer(channel: string, ...args: unknown[]): void {
@@ -102,10 +150,46 @@ export class RecordingService extends EventEmitter {
     }
 
     private registerIpcHandlers(): void {
-        ipcMain.handle(IpcChannels.START_RECORDING, () => this.startRecording());
-        ipcMain.handle(IpcChannels.STOP_RECORDING, () => this.stopRecording());
-        ipcMain.handle(IpcChannels.PAUSE_RECORDING, () => this.pauseRecording());
-        ipcMain.handle(IpcChannels.RESUME_RECORDING, () => this.resumeRecording());
+        ipcMain.handle(IpcChannels.START_RECORDING, () => {
+            try {
+                console.log('[RecordingService] IPC START_RECORDING received');
+                this.startRecording();
+                return { success: true };
+            } catch (error) {
+                console.error('[RecordingService] Error in START_RECORDING handler:', error);
+                return { success: false, error: `${error}` };
+            }
+        });
+        
+        ipcMain.handle(IpcChannels.STOP_RECORDING, () => {
+            try {
+                this.stopRecording();
+                return { success: true };
+            } catch (error) {
+                console.error('[RecordingService] Error in STOP_RECORDING handler:', error);
+                return { success: false, error: `${error}` };
+            }
+        });
+        
+        ipcMain.handle(IpcChannels.PAUSE_RECORDING, () => {
+            try {
+                this.pauseRecording();
+                return { success: true };
+            } catch (error) {
+                console.error('[RecordingService] Error in PAUSE_RECORDING handler:', error);
+                return { success: false, error: `${error}` };
+            }
+        });
+        
+        ipcMain.handle(IpcChannels.RESUME_RECORDING, () => {
+            try {
+                this.resumeRecording();
+                return { success: true };
+            } catch (error) {
+                console.error('[RecordingService] Error in RESUME_RECORDING handler:', error);
+                return { success: false, error: `${error}` };
+            }
+        });
 
         ipcMain.handle(IpcChannels.GET_MEDIA_ACCESS_STATUS, async (_event, mediaType: string) => {
            try {
@@ -194,6 +278,10 @@ export class RecordingService extends EventEmitter {
                 description: `Clicked at (${data.x}, ${data.y})`,
             };
 
+            // Add step to steps array
+            this.steps.push(newStep);
+            
+            // Send step to renderer
             this.sendToRenderer(IpcChannels.STEP_CREATED, newStep);
 
         } catch (error) {

@@ -14,10 +14,13 @@ export interface DisplayStep {
 
 interface StepsState {
   steps: DisplayStep[];
+  isLoading: boolean;
   addStep: (newStep: RecordingStep) => void;
   setSteps: (steps: DisplayStep[]) => void; // For reordering, deleting multiple, loading
   updateStep: (originalId: string, updatedData: Partial<Omit<DisplayStep, 'displayId' | 'originalId'>>) => void;
   deleteStep: (originalId: string) => void;
+  setLoading: (isLoading: boolean) => void;
+  clearSteps: () => void;
 }
 
 export const useStepsStore = create<StepsState>()(
@@ -25,6 +28,16 @@ export const useStepsStore = create<StepsState>()(
     immer(
       (set) => ({
         steps: [],
+        isLoading: false,
+
+        setLoading: (isLoading: boolean) => set((state: StepsState) => {
+          state.isLoading = isLoading;
+        }),
+        
+        clearSteps: () => set((state: StepsState) => {
+          console.log(`[StepsStore] Clearing all steps`);
+          state.steps = [];
+        }),
 
         addStep: (newStep: RecordingStep) => set((state: StepsState) => {
           // Check if step with this ID already exists
@@ -54,6 +67,8 @@ export const useStepsStore = create<StepsState>()(
             index === self.findIndex(s => s.originalId === step.originalId)
           );
           
+          console.log(`[StepsStore] Setting ${uniqueSteps.length} steps`);
+          
           const recalculatedSteps = uniqueSteps.map((step, index) => ({
               ...step,
               displayId: index + 1,
@@ -65,11 +80,15 @@ export const useStepsStore = create<StepsState>()(
         updateStep: (originalId: string, updatedData: Partial<Omit<DisplayStep, 'displayId' | 'originalId'>>) => set((state: StepsState) => {
           const stepIndex = state.steps.findIndex(step => step.originalId === originalId);
           if (stepIndex !== -1) {
+            console.log(`[StepsStore] Updating step ${originalId}`);
             state.steps[stepIndex] = { ...state.steps[stepIndex], ...updatedData };
+          } else {
+            console.warn(`[StepsStore] Failed to update step ${originalId} - not found`);
           }
         }),
 
         deleteStep: (originalId: string) => set((state: StepsState) => {
+          console.log(`[StepsStore] Deleting step ${originalId}`);
           const remainingSteps = state.steps.filter(step => step.originalId !== originalId);
           const recalculatedSteps = remainingSteps.map((step, index) => ({
               ...step,
