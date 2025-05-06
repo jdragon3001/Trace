@@ -26,6 +26,7 @@ declare global {
       getTutorialsByProject: (projectId: string) => Promise<Tutorial[]>;
       deleteTutorial: (tutorialId: string) => Promise<boolean>;
       getTutorial: (tutorialId: string) => Promise<Tutorial | null>;
+      updateTutorialStatus: (tutorialId: string, status: 'draft' | 'ready' | 'exported') => Promise<Tutorial>;
       
       // Legacy Project Methods (will be removed in future)
       saveProject: (steps: RecordingStep[], filePath?: string) => Promise<Project | null>;
@@ -46,6 +47,12 @@ declare global {
       
       // Export
       exportProject: (format: string, steps: RecordingStep[], filePath: string) => Promise<void>;
+      exportTutorial: (tutorialId: string, options: {
+        docTitle: string;
+        includeScreenshots: boolean;
+        includeStepNumbers: boolean;
+        exportFormat: 'PDF' | 'DOCX';
+      }) => Promise<string>;
       loadImageAsDataUrl: (imagePath: string) => Promise<string>;
     };
     systemPreferences: {

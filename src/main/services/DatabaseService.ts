@@ -470,32 +470,70 @@ export class DatabaseService {
     
     try {
       const db = await this.dbManager.getDatabase();
-      const tutorial = db.prepare('SELECT * FROM tutorials WHERE id = ?').get(id) as any;
+      const tutorial = db.prepare(`
+        SELECT * FROM tutorials WHERE id = ?
+      `).get(id);
       
       if (!tutorial) {
-        console.log(`[DatabaseService] Tutorial with ID ${id} not found`);
         return null;
       }
       
-      console.log(`[DatabaseService] Retrieved tutorial: ${tutorial.title} (${tutorial.id})`);
-      
-      return {
-        id: tutorial.id,
-        projectId: tutorial.projectId,
-        title: tutorial.title,
-        description: tutorial.description,
-        status: tutorial.status as 'draft' | 'ready' | 'exported',
-        createdAt: tutorial.createdAt,
-        updatedAt: tutorial.updatedAt
-      };
+      return tutorial as Tutorial;
     } catch (error: any) {
-      console.error(`[DatabaseService] Error retrieving tutorial with ID ${id}:`, error);
+      console.error(`[DatabaseService] Error getting tutorial ${id}:`, error);
       return null;
     }
   }
 
   /**
-   * Delete a tutorial by ID
+   * Update an existing tutorial
+   */
+  public async updateTutorial(tutorial: Tutorial): Promise<Tutorial> {
+    await this.ensureInitialized();
+    
+    try {
+      if (!tutorial.id) {
+        throw new Error('Tutorial ID is required for update');
+      }
+      
+      const db = await this.dbManager.getDatabase();
+      
+      // Ensure updatedAt is set
+      const updatedTutorial = {
+        ...tutorial,
+        updatedAt: tutorial.updatedAt || new Date().toISOString()
+      };
+      
+      const result = db.prepare(`
+        UPDATE tutorials
+        SET projectId = ?,
+            title = ?,
+            description = ?,
+            status = ?,
+            updatedAt = ?
+        WHERE id = ?
+      `).run(
+        updatedTutorial.projectId,
+        updatedTutorial.title,
+        updatedTutorial.description || null,
+        updatedTutorial.status,
+        updatedTutorial.updatedAt,
+        updatedTutorial.id
+      );
+      
+      if (result.changes === 0) {
+        throw new Error(`Failed to update tutorial ${tutorial.id}`);
+      }
+      
+      return updatedTutorial;
+    } catch (error: any) {
+      console.error('[DatabaseService] Error updating tutorial:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a tutorial
    */
   public async deleteTutorial(tutorialId: string): Promise<boolean> {
     await this.ensureInitialized();

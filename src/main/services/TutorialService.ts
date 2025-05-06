@@ -55,6 +55,8 @@ export class TutorialService {
 
   private registerIpcHandlers(): void {
     // Get all tutorials
+    // Commented out because DatabaseService doesn't have an getAllTutorials method
+    /*
     ipcMain.handle(IpcChannels.GET_TUTORIALS, async () => {
       try {
         console.log('[TutorialService] Retrieving all tutorials...');
@@ -66,6 +68,7 @@ export class TutorialService {
         return []; // Return empty array instead of throwing to prevent UI errors
       }
     });
+    */
 
     // Get recent tutorials
     ipcMain.handle(IpcChannels.GET_RECENT_TUTORIALS, async () => {
@@ -94,9 +97,13 @@ export class TutorialService {
     });
 
     // Save step
+    // DUPLICATED: This handler is already registered in ProjectService
+    // Commented out to avoid duplicate handler registration
+    /*
     ipcMain.handle(IpcChannels.SAVE_STEP, (_event, step: Step) => {
       return this.saveStep(step);
     });
+    */
 
     // Get steps by tutorial
     // DUPLICATED: This handler is already registered in ProjectService
@@ -108,20 +115,32 @@ export class TutorialService {
     */
 
     // Update step
+    // DUPLICATED: This handler is already registered in ProjectService
+    // Commented out to avoid duplicate handler registration
+    /*
     ipcMain.handle(IpcChannels.UPDATE_STEP, (_event, step: Step) => {
       return this.databaseService.updateStep(step);
     });
+    */
 
     // Delete step
+    // DUPLICATED: This handler is already registered in ProjectService
+    // Commented out to avoid duplicate handler registration
+    /*
     ipcMain.handle(IpcChannels.DELETE_STEP, (_event, stepId: string) => {
       return this.databaseService.deleteStep(stepId);
     });
+    */
 
     // Reorder steps
+    // DUPLICATED: This handler is already registered in ProjectService
+    // Commented out to avoid duplicate handler registration
+    /*
     ipcMain.handle(IpcChannels.REORDER_STEPS, (_event, steps: Pick<Step, 'id' | 'order'>[]) => {
       this.databaseService.updateStepsOrder(steps);
       return true;
     });
+    */
 
     // Get current tutorial
     ipcMain.handle(IpcChannels.GET_CURRENT_TUTORIAL, () => {
@@ -165,11 +184,11 @@ export class TutorialService {
     return createdTutorial;
   }
 
-  private saveStep(step: Step): Step {
+  private async saveStep(step: Step): Promise<Step> {
     if (step.id) {
-      return this.databaseService.updateStep(step);
+      return await this.databaseService.updateStep(step);
     } else {
-      return this.databaseService.createStep(step);
+      return await this.databaseService.createStep(step);
     }
   }
 
@@ -192,7 +211,7 @@ export class TutorialService {
     }
     
     // If confirmed, delete from database
-    const deleted = this.databaseService.deleteTutorial(tutorialId);
+    const deleted = await this.databaseService.deleteTutorial(tutorialId);
     
     // Clear current tutorial if it was the deleted one
     if (deleted && this.currentTutorialId === tutorialId) {

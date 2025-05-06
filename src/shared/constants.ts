@@ -30,6 +30,7 @@ export const IpcChannels = {
   SET_CURRENT_TUTORIAL: 'tutorial:set-current' as const,
   GET_TUTORIAL: 'tutorial:get' as const,
   GET_RECENT_TUTORIALS: 'tutorial:get-recent' as const,
+  UPDATE_TUTORIAL_STATUS: 'tutorial:update-status' as const,
   
   // Enhanced Step Management
   SAVE_STEP: 'step:save' as const,
@@ -44,6 +45,7 @@ export const IpcChannels = {
   
   // Export
   EXPORT_PROJECT: 'project:export' as const,
+  EXPORT_TUTORIAL: 'tutorial:export' as const,
   EXPORT_PROGRESS: 'export:progress' as const,
   EXPORT_COMPLETE: 'export:complete' as const,
   EXPORT_ERROR: 'export:error' as const,

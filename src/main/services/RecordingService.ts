@@ -9,6 +9,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { app } from 'electron';
 import { ScreenshotService } from './ScreenshotService';
+import ProjectService from './ProjectService';
 
 // Helper function to generate a more unique ID
 function generateUniqueId(): string {
@@ -27,12 +28,17 @@ export class RecordingService extends EventEmitter {
     private hookActive: boolean = false;
     private lastCaptureTime: number = 0;
     private captureDebounceTime: number = 1000; // 1 second debounce
+    private mouseUpHandler: ((event: UiohookMouseEvent) => void) | null = null;
+    private projectService: ProjectService;
+    private activeProjectId: string | null = null;
+    private activeTutorialId: string | null = null;
 
     constructor(private mainWindow: BrowserWindow) {
         super();
         this.tempDir = path.join(app.getPath('userData'), 'openscribe_temp');
         this.screenshotService = new ScreenshotService(this.tempDir);
         this.imageService = new ImageService(this.tempDir);
+        this.projectService = ProjectService.getInstance();
         this.initialize();
     }
 
@@ -73,6 +79,18 @@ export class RecordingService extends EventEmitter {
                 console.log(`[RecordingService] Creating temp directory: ${this.tempDir}`);
                 fs.mkdirSync(this.tempDir, { recursive: true });
             }
+
+            // Store the current project and tutorial IDs from ProjectService
+            this.activeProjectId = this.projectService.getCurrentProjectId();
+            this.activeTutorialId = this.projectService.getCurrentTutorialId();
+
+            if (!this.activeProjectId || !this.activeTutorialId) {
+                console.error('[RecordingService] Cannot start recording: No active project or tutorial');
+                this.sendToRenderer(IpcChannels.RECORDING_ERROR, 'Cannot start recording: No active project or tutorial');
+                return;
+            }
+
+            console.log(`[RecordingService] Recording for project: ${this.activeProjectId}, tutorial: ${this.activeTutorialId}`);
             
             // Set recording state
             this.isRecording = true;
@@ -102,9 +120,15 @@ export class RecordingService extends EventEmitter {
 
     stopRecording(): void {
         if (!this.isRecording) return;
-        console.log('Stopping recording...');
+        console.log('[RecordingService] Stopping recording...');
         this.isRecording = false;
         this.isPaused = false;
+        
+        // Clear active project/tutorial IDs when recording stops
+        console.log(`[RecordingService] Clearing active project/tutorial: ${this.activeProjectId}/${this.activeTutorialId}`);
+        this.activeProjectId = null;
+        this.activeTutorialId = null;
+        
         this.emitStateUpdate();
         this.unregisterShortcuts();
     }
@@ -228,6 +252,9 @@ export class RecordingService extends EventEmitter {
             }
         };
 
+        // Store the handler reference so we can remove it later
+        this.mouseUpHandler = mouseUpHandler;
+
         uIOhook.on('mouseup', mouseUpHandler);
 
         try {
@@ -246,6 +273,13 @@ export class RecordingService extends EventEmitter {
             console.warn('[RecordingService] captureStep called without mouse position data.');
             return;
         }
+        
+        // Verify we have active project and tutorial IDs
+        if (!this.activeProjectId || !this.activeTutorialId) {
+            console.error('[RecordingService] Cannot capture step: No active project or tutorial');
+            return;
+        }
+        
         // Capture the step number *before* any async operations
         const currentStepNumber = ++this.stepCounter;
         console.log(`Attempting to capture step ${currentStepNumber} (type: ${type})`, data);
@@ -316,11 +350,18 @@ export class RecordingService extends EventEmitter {
         this.unregisterShortcuts();
         if (this.hookActive) {
             try {
+                // Remove the mouseup event listener if it exists
+                if (this.mouseUpHandler) {
+                    uIOhook.removeListener('mouseup', this.mouseUpHandler);
+                    console.log('[RecordingService] Removed mouseup event listener');
+                }
+                
+                // Stop the uIOhook
                 uIOhook.stop();
                 this.hookActive = false;
-                console.log('Stopped uiohook listener.');
-            } catch (e) {
-                console.error("Error during cleanup attempt for uiohook:", e);
+                console.log('[RecordingService] uIOhook stopped');
+            } catch (error) {
+                console.error('[RecordingService] Error cleaning up uIOhook:', error);
             }
         }
     }

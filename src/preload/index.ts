@@ -13,7 +13,11 @@ try {
     pauseRecording: () => ipcRenderer.invoke(IpcChannels.PAUSE_RECORDING),
     resumeRecording: () => ipcRenderer.invoke(IpcChannels.RESUME_RECORDING),
     onStepCreated: (callback: (step: any) => void) => {
-      ipcRenderer.on(IpcChannels.STEP_CREATED, (_event, step) => callback(step));
+      const listener = (_event: IpcRendererEvent, step: any) => callback(step);
+      ipcRenderer.on(IpcChannels.STEP_CREATED, listener);
+      return () => {
+        ipcRenderer.removeListener(IpcChannels.STEP_CREATED, listener);
+      };
     },
     onRecordingStatus: (callback: (state: { isRecording: boolean; isPaused: boolean; currentStep: number; steps: any[] }) => void) => {
         const listener = (_event: IpcRendererEvent, state: { isRecording: boolean; isPaused: boolean; currentStep: number; steps: any[] }) => callback(state);
@@ -23,7 +27,11 @@ try {
         };
     },
     onRecordingError: (callback: (error: string) => void) => {
-      ipcRenderer.on(IpcChannels.RECORDING_ERROR, (_event, error) => callback(error));
+      const listener = (_event: IpcRendererEvent, error: string) => callback(error);
+      ipcRenderer.on(IpcChannels.RECORDING_ERROR, listener);
+      return () => {
+        ipcRenderer.removeListener(IpcChannels.RECORDING_ERROR, listener);
+      };
     },
     getSteps: (): Promise<unknown[]> => ipcRenderer.invoke(IpcChannels.GET_STEPS),
     addStep: (step: unknown) => ipcRenderer.send(IpcChannels.ADD_STEP, step),
@@ -41,6 +49,8 @@ try {
     getTutorialsByProject: (projectId: string) => ipcRenderer.invoke(IpcChannels.GET_TUTORIALS_BY_PROJECT, projectId),
     getTutorial: (tutorialId: string) => ipcRenderer.invoke(IpcChannels.GET_TUTORIAL, tutorialId),
     deleteTutorial: (tutorialId: string) => ipcRenderer.invoke(IpcChannels.DELETE_TUTORIAL, tutorialId),
+    updateTutorialStatus: (tutorialId: string, status: 'draft' | 'ready' | 'exported') => 
+      ipcRenderer.invoke(IpcChannels.UPDATE_TUTORIAL_STATUS, tutorialId, status),
     
     // Step Management APIs
     saveStep: (step: unknown) => ipcRenderer.invoke(IpcChannels.SAVE_STEP, step),
@@ -58,6 +68,8 @@ try {
     // Export APIs
     exportProject: (format: string, steps: unknown[], filePath: string) => 
       ipcRenderer.invoke(IpcChannels.EXPORT_PROJECT, format, steps, filePath),
+    exportTutorial: (tutorialId: string, options: unknown) => 
+      ipcRenderer.invoke(IpcChannels.EXPORT_TUTORIAL, tutorialId, options),
     loadImageAsDataUrl: (imagePath: string): Promise<string> => 
       ipcRenderer.invoke('load-image-as-data-url', imagePath)
   });

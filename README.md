@@ -7,7 +7,7 @@ OpenScribe is an Electron-based application for creating step-by-step guides wit
 - Create projects and tutorials to organize your guides
 - Record step-by-step workflows with automatic screenshots
 - Add text descriptions, keyboard shortcuts, and annotations
-- Export guides as HTML, PDF, or Markdown documentation
+- Export guides as PDF or DOCX documentation with customizable options
 
 ## Development
 
@@ -51,6 +51,28 @@ When working with the database code, keep these best practices in mind:
 3. Implement proper error handling for database operations
 4. Check for existing records before insertion to prevent constraint violations
 
+### Exporting Tutorials
+
+OpenScribe supports exporting tutorials as PDF or DOCX documents:
+
+#### PDF Export
+- Fixed layout that looks the same on all devices
+- Screenshots embedded directly in the document
+- Option to include step numbers
+- Clean formatting for easy reading and printing
+
+#### DOCX Export
+- Editable format compatible with Microsoft Word and other office applications
+- Screenshots can be edited or modified after export
+- Structured document with headings and consistent formatting
+- Perfect for further customization after export
+
+To export a tutorial:
+1. Select a tutorial from your project list
+2. Click the Export tab
+3. Configure export options (format, title, include screenshots, include step numbers)
+4. Click "Export Documentation" and choose where to save the file
+
 ### Building for Production
 
 To create a production build:
@@ -62,6 +84,13 @@ npm run package
 This will generate platform-specific packages in the `out` directory.
 
 ## Recent Updates
+
+### Export Functionality (2024-07-05)
+- Added PDF and DOCX export options
+- Implemented custom document formatting with professional layout
+- Added option to include/exclude screenshots and step numbers
+- Real-time preview of export document with settings changes
+- Export progress and success/error feedback
 
 ### Database Architecture Redesign (2024-06-26)
 - Complete redesign of the database system to fix data consistency issues

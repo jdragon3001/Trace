@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useStepsStore } from '../store/useStepsStore';
+import { Tutorial, Step } from '../../shared/types';
 
 // Placeholder icon
 const ImageIcon = () => <svg className="w-16 h-16 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>;
 
-// Toggle Switch Component (Example)
+// Toggle Switch Component
 const ToggleSwitch: React.FC<{ label: string; enabled: boolean; onChange: (enabled: boolean) => void }> = ({ label, enabled, onChange }) => {
   return (
     <div className="flex items-center justify-between">
@@ -32,18 +33,109 @@ interface ExportTabProps {
 }
 
 export const ExportTab: React.FC<ExportTabProps> = ({ tutorialId }) => {
-  // TODO: Implement state and handlers for export settings, format selection, preview, etc.
   const [docTitle, setDocTitle] = useState('My Documentation');
   const [includeScreenshots, setIncludeScreenshots] = useState(true);
   const [includeStepNumbers, setIncludeStepNumbers] = useState(true);
   const [exportFormat, setExportFormat] = useState<'PDF' | 'DOCX'>('PDF');
+  const [isLoading, setIsLoading] = useState(false);
+  const [exportResult, setExportResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [tutorial, setTutorial] = useState<Tutorial | null>(null);
+  const [steps, setSteps] = useState<Step[]>([]);
+  const [imageDataUrls, setImageDataUrls] = useState<Record<string, string>>({});
 
-  const handleExport = () => {
-    console.log(`Exporting as ${exportFormat} with title: ${docTitle}, screenshots: ${includeScreenshots}, numbers: ${includeStepNumbers}`);
-    // Call actual export logic
+  // Load tutorial details and steps when tutorialId changes
+  useEffect(() => {
+    if (tutorialId) {
+      loadTutorialData();
+    }
+  }, [tutorialId]);
+
+  const loadTutorialData = async () => {
+    if (!tutorialId) return;
+
+    try {
+      // Load tutorial details
+      const tutorialData = await window.electronAPI.getTutorial(tutorialId);
+      setTutorial(tutorialData);
+      
+      // Set doc title based on tutorial title
+      if (tutorialData?.title) {
+        setDocTitle(tutorialData.title);
+      }
+      
+      // Load steps for this tutorial
+      const stepsData = await window.electronAPI.getStepsByTutorial(tutorialId);
+      setSteps(stepsData);
+      
+      // Load screenshot data URLs
+      const dataUrls: Record<string, string> = {};
+      for (const step of stepsData) {
+        if (step.screenshotPath && step.id) {
+          try {
+            const dataUrl = await window.electronAPI.loadImageAsDataUrl(step.screenshotPath);
+            if (dataUrl) {
+              dataUrls[step.id] = dataUrl;
+            }
+          } catch (error) {
+            console.error(`Failed to load image for step ${step.id}:`, error);
+          }
+        }
+      }
+      setImageDataUrls(dataUrls);
+    } catch (error) {
+      console.error('Error loading tutorial data:', error);
+    }
   };
 
-  // You can use the tutorialId to load steps for the specific tutorial
+  const handleExport = async () => {
+    if (!tutorialId || !tutorial) {
+      setExportResult({
+        success: false,
+        message: 'No tutorial selected for export.',
+      });
+      return;
+    }
+    
+    setIsLoading(true);
+    setExportResult(null);
+    
+    try {
+      // Call export service via IPC
+      const options = {
+        docTitle,
+        includeScreenshots,
+        includeStepNumbers,
+        exportFormat,
+      };
+      
+      const filePath = await window.electronAPI.exportTutorial(tutorialId, options);
+      
+      setExportResult({
+        success: true,
+        message: `Successfully exported tutorial to ${filePath}`,
+      });
+      
+      // Update tutorial status to 'exported' if needed
+      if (tutorial.status !== 'exported') {
+        await window.electronAPI.updateTutorialStatus(tutorialId, 'exported');
+        // Refresh tutorial data
+        loadTutorialData();
+      }
+    } catch (error) {
+      console.error('Export failed:', error);
+      setExportResult({
+        success: false,
+        message: `Export failed: ${(error as Error).message || 'Unknown error'}`,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Get a sample of steps for preview
+  const previewSteps = steps.length > 0 
+    ? [...steps].sort((a, b) => a.order - b.order).slice(0, 3) 
+    : [];
 
   return (
     <div className="p-6 bg-white h-full flex space-x-6">
@@ -94,12 +186,33 @@ export const ExportTab: React.FC<ExportTabProps> = ({ tutorialId }) => {
           </p>
         </div>
 
+        {/* Export Result */}
+        {exportResult && (
+          <div className={`p-4 rounded-md ${exportResult.success ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
+            <p className="text-sm">{exportResult.message}</p>
+          </div>
+        )}
+
         {/* Export Button */} 
         <button
           onClick={handleExport}
-          className="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+          disabled={isLoading || !tutorialId}
+          className={`w-full ${
+            isLoading 
+              ? 'bg-gray-400 cursor-not-allowed' 
+              : !tutorialId
+                ? 'bg-gray-300 cursor-not-allowed'
+                : 'bg-gray-800 hover:bg-gray-900'
+          } text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline relative`}
         >
-          Export Documentation
+          {isLoading ? (
+            <>
+              <span className="inline-block animate-spin mr-2">↻</span>
+              Exporting...
+            </>
+          ) : (
+            'Export Documentation'
+          )}
         </button>
       </div>
 
@@ -109,26 +222,46 @@ export const ExportTab: React.FC<ExportTabProps> = ({ tutorialId }) => {
           <h3 className="font-medium text-gray-900">Preview</h3>
           <button className="text-sm font-medium text-indigo-600 hover:text-indigo-800">Full Preview</button>
         </div>
-        {/* TODO: Implement actual preview rendering based on steps and settings */} 
+        
         <div className="flex-1 bg-white border border-gray-200 rounded overflow-y-auto p-4 space-y-3">
           <h4 className="font-bold text-lg mb-4">{docTitle}</h4>
-          {/* Example step preview */}
-          <div className="flex space-x-3">
-            {includeStepNumbers && <span className="font-medium text-gray-700">1</span>}
-            <span className="text-gray-800">Navigate to settings</span>
-          </div>
-          {includeScreenshots && 
-            <div className="pl-6 py-2">
-              <div className="w-full aspect-video bg-gray-100 border rounded flex items-center justify-center">
-                <ImageIcon />
-              </div>
+          
+          {previewSteps.length === 0 ? (
+            <div className="text-center py-6 text-gray-500">
+              <p>No steps available for preview.</p>
+              <p className="text-sm mt-2">Add steps to your tutorial to see a preview.</p>
             </div>
-          }
-          {/* Add more preview steps here */} 
-          <div className="flex space-x-3">
-            {includeStepNumbers && <span className="font-medium text-gray-700">2</span>}
-            <span className="text-gray-800">Select preferences</span>
-          </div>
+          ) : (
+            previewSteps.map((step, index) => (
+              <div key={step.id} className="mb-4">
+                <div className="flex space-x-3">
+                  {includeStepNumbers && <span className="font-medium text-gray-700">{index + 1}</span>}
+                  <span className="text-gray-800">{step.actionText}</span>
+                </div>
+                {includeScreenshots && (
+                  <div className="pl-6 py-2">
+                    {step.screenshotPath && step.id && imageDataUrls[step.id] ? (
+                      <img 
+                        src={imageDataUrls[step.id]} 
+                        alt={`Screenshot for step ${index + 1}`}
+                        className="w-full border rounded shadow-sm"
+                      />
+                    ) : (
+                      <div className="w-full aspect-video bg-gray-100 border rounded flex items-center justify-center">
+                        <ImageIcon />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+          
+          {steps.length > 3 && (
+            <div className="text-center py-3 text-gray-500 text-sm">
+              <p>... and {steps.length - 3} more steps</p>
+            </div>
+          )}
         </div>
       </div>
     </div>

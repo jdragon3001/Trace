@@ -151,8 +151,8 @@ export class ProjectService {
     });
 
     // Save step
-    ipcMain.handle(IpcChannels.SAVE_STEP, (_event, step: Step) => {
-      return this.saveStep(step);
+    ipcMain.handle(IpcChannels.SAVE_STEP, async (_event, step: Step) => {
+      return await this.saveStep(step);
     });
 
     // Get steps by tutorial
@@ -264,11 +264,36 @@ export class ProjectService {
     return createdTutorial;
   }
 
-  private saveStep(step: Step): Step {
-    if (step.id) {
-      return this.databaseService.updateStep(step);
-        } else {
-      return this.databaseService.createStep(step);
+  private async saveStep(step: Step): Promise<Step> {
+    try {
+      console.log(`[ProjectService] Saving step for tutorial: ${step.tutorialId}`);
+
+      // Verify this step belongs to a valid tutorial
+      if (!step.tutorialId) {
+        console.error('[ProjectService] Cannot save step: Missing tutorialId');
+        throw new Error('Missing tutorialId when saving step');
+      }
+
+      // Validate that we're only saving steps to the current tutorial
+      if (this.currentTutorialId && step.tutorialId !== this.currentTutorialId) {
+        console.warn(`[ProjectService] Step tutorialId (${step.tutorialId}) doesn't match current tutorial (${this.currentTutorialId})`);
+        
+        // Override with current tutorial to enforce consistency
+        console.log(`[ProjectService] Correcting step.tutorialId to match current tutorial: ${this.currentTutorialId}`);
+        step.tutorialId = this.currentTutorialId;
+      }
+
+      // Save the step
+      if (step.id) {
+        console.log(`[ProjectService] Updating existing step ${step.id}`);
+        return await this.databaseService.updateStep(step);
+      } else {
+        console.log(`[ProjectService] Creating new step for tutorial ${step.tutorialId}`);
+        return await this.databaseService.createStep(step);
+      }
+    } catch (error) {
+      console.error('[ProjectService] Error in saveStep:', error);
+      throw error;
     }
   }
 
@@ -302,10 +327,10 @@ export class ProjectService {
     }
     
     // If confirmed, delete from database
-    const deleted = this.databaseService.deleteProject(projectId);
+    const deleted = await this.databaseService.deleteProject(projectId);
     
     // Clear current project if it was the deleted one
-    if (deleted && this.currentProjectId === projectId) {
+    if (this.currentProjectId === projectId) {
       this.currentProjectId = null;
       this.currentTutorialId = null;
     }
@@ -337,10 +362,10 @@ export class ProjectService {
     }
     
     // If confirmed, delete from database
-    const deleted = this.databaseService.deleteTutorial(tutorialId);
+    const deleted = await this.databaseService.deleteTutorial(tutorialId);
     
     // Clear current tutorial if it was the deleted one
-    if (deleted && this.currentTutorialId === tutorialId) {
+    if (this.currentTutorialId === tutorialId) {
       this.currentTutorialId = null;
     }
     
@@ -355,6 +380,24 @@ export class ProjectService {
   public async getCurrentTutorial(): Promise<Tutorial | null> {
     if (!this.currentTutorialId) return null;
     return await this.databaseService.getTutorial(this.currentTutorialId);
+  }
+
+  // Get current project ID
+  public getCurrentProjectId(): string | null {
+    return this.currentProjectId || null;
+  }
+  
+  // Get current tutorial ID
+  public getCurrentTutorialId(): string | null {
+    return this.currentTutorialId || null;
+  }
+
+  /**
+   * Get the database service instance
+   * @returns The DatabaseService instance
+   */
+  public getDatabaseService(): DatabaseService {
+    return this.databaseService;
   }
 }
 

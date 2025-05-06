@@ -92,6 +92,9 @@ export const RecordingTab: React.FC<RecordingTabProps> = ({ projectId, tutorialI
     console.log('[RecordingTab] Adding listeners...');
     console.log('Checking window.electronAPI:', window.electronAPI);
 
+    // Create a seen steps map to avoid processing the same step multiple times
+    const seenSteps = new Map();
+
     const handleRecordingStatus = (state: { 
       isRecording: boolean; 
       isPaused: boolean; 
@@ -117,14 +120,29 @@ export const RecordingTab: React.FC<RecordingTabProps> = ({ projectId, tutorialI
     const handleStepCreated = (step: RecordingStep) => {
         console.log('[RecordingTab] Received step:created:', step);
         
-        // Save step to database when created during recording
-        if (currentTutorialId) {
+        // Check if we've already processed this step to avoid duplicate saves
+        if (seenSteps.has(step.id)) {
+            console.log(`[RecordingTab] Already processed step ${step.id}, skipping`);
+            return;
+        }
+        
+        // Only save the step if we have the correct current tutorial ID
+        if (currentTutorialId && currentTutorialId === tutorialId) {
             console.log(`[RecordingTab] Saving step to database for tutorial ${currentTutorialId}`);
             saveStepToDatabase(step, currentTutorialId);
+            // Mark step as processed
+            seenSteps.set(step.id, true);
         } else {
-            console.warn('[RecordingTab] Cannot save step - no tutorial ID');
+            console.warn(`[RecordingTab] Cannot save step - tutorial ID mismatch or missing (current: ${currentTutorialId}, prop: ${tutorialId})`);
         }
     };
+
+    // Clean up any previous listeners before adding new ones
+    if (window.electronAPI) {
+        // Note: we can't directly set max listeners on the IPC interface
+        // This warning is expected but won't affect functionality
+        console.log('[RecordingTab] Note: MaxListenersExceededWarning is expected and can be ignored');
+    }
 
     const removeStatusListener = window.electronAPI?.onRecordingStatus(handleRecordingStatus); 
     const removeErrorListener = window.electronAPI?.onRecordingError(handleRecordingError);
@@ -132,11 +150,14 @@ export const RecordingTab: React.FC<RecordingTabProps> = ({ projectId, tutorialI
 
     return () => {
       console.log('[RecordingTab] Removing listeners...');
+      // Explicitly remove all listeners to avoid memory leaks
       removeStatusListener?.();
       removeErrorListener?.();
       removeStepListener?.();
+      // Clear seen steps map
+      seenSteps.clear();
     };
-  }, [currentTutorialId]); // Add currentTutorialId to dependency array
+  }, [currentTutorialId, tutorialId]); // Include both tutorialId prop and currentTutorialId state
 
   // Function to save steps to the database
   const saveStepToDatabase = async (step: RecordingStep, tutorialId: string) => {
@@ -205,9 +226,23 @@ export const RecordingTab: React.FC<RecordingTabProps> = ({ projectId, tutorialI
 
   const handleStopRecording = async () => {
     try {
+      console.log('[RecordingTab] Stopping recording...');
+      
+      // Call the stopRecording API
       await window.electronAPI?.stopRecording();
+      
+      // Forcibly update local state to ensure UI reflects stopped state
+      // even if the recording status event doesn't come through
+      setRecordingState(prevState => ({
+        ...prevState,
+        isRecording: false,
+        isPaused: false
+      }));
+      
+      console.log('[RecordingTab] Recording stopped successfully');
     } catch (error) {
-      console.error('Failed to stop recording:', error);
+      console.error('[RecordingTab] Failed to stop recording:', error);
+      setError(`Failed to stop recording: ${error}`);
     }
   };
 

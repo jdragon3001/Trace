@@ -1,6 +1,9 @@
 /**
  * Webpack configuration for the main process
  */
+const path = require('path');
+const CopyPlugin = require('copy-webpack-plugin');
+
 module.exports = {
   entry: './src/main/index.ts',
   module: {
@@ -18,4 +21,15 @@ module.exports = {
   resolve: {
     extensions: ['.js', '.ts', '.jsx', '.tsx', '.css', '.json'],
   },
+  plugins: [
+    // Copy PDFKit font data files
+    new CopyPlugin({
+      patterns: [
+        {
+          from: path.resolve(__dirname, 'node_modules/pdfkit/js/data'),
+          to: 'data',
+        },
+      ],
+    }),
+  ],
 }; 
