@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useStepsStore } from '../store/useStepsStore';
 import { Tutorial, Step } from '../../shared/types';
+import { drawShape } from '../utils/shapeDrawing';
 
 // Placeholder icon
 const ImageIcon = () => <svg className="w-16 h-16 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>;
@@ -32,6 +33,116 @@ interface ExportTabProps {
   tutorialId?: string;
 }
 
+// PreviewCanvas component
+export const PreviewCanvas: React.FC<{
+  imageUrl: string;
+  shapes: any[];
+  width: number;
+  height: number;
+}> = ({ imageUrl, shapes, width, height }) => {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  
+  // Add state to track the actual rendered dimensions
+  const [actualDimensions, setActualDimensions] = useState({ width, height });
+  
+  useEffect(() => {
+    console.log('[PreviewCanvas] Rendering preview:', { 
+      imageUrl: imageUrl.substring(0, 30) + '...', 
+      shapeCount: shapes.length, 
+      requestedWidth: width,
+      requestedHeight: height,
+      actualWidth: actualDimensions.width,
+      actualHeight: actualDimensions.height
+    });
+    
+    // Log shape coordinates for debugging
+    if (shapes.length > 0) {
+      console.log('[PreviewCanvas] First shape coordinates:', {
+        start: shapes[0].start,
+        end: shapes[0].end
+      });
+    }
+    
+    if (!canvasRef.current) return;
+    
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // Clear the canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Load the image
+    const img = new Image();
+    img.onload = () => {
+      // Calculate the scaling to maintain aspect ratio
+      const imgAspectRatio = img.width / img.height;
+      const canvasAspectRatio = width / height;
+      
+      let drawWidth = width;
+      let drawHeight = height;
+      
+      // Adjust dimensions to maintain aspect ratio
+      if (imgAspectRatio > canvasAspectRatio) {
+        // Image is wider than canvas area
+        drawWidth = width;
+        drawHeight = width / imgAspectRatio;
+      } else {
+        // Image is taller than canvas area
+        drawHeight = height;
+        drawWidth = height * imgAspectRatio;
+      }
+      
+      // Update the canvas size to match the drawing dimensions
+      canvas.width = drawWidth;
+      canvas.height = drawHeight;
+      
+      // Store actual dimensions for scaling shapes
+      setActualDimensions({ width: drawWidth, height: drawHeight });
+      
+      // Calculate centering position
+      const x = (width - drawWidth) / 2;
+      const y = (height - drawHeight) / 2;
+      
+      // Draw the image
+      ctx.drawImage(img, 0, 0, drawWidth, drawHeight);
+      
+      // Draw the shapes
+      if (shapes && shapes.length > 0) {
+        shapes.forEach(shape => {
+          // Scale shape coordinates to match the drawn image dimensions
+          const scaledShape = {
+            ...shape,
+            start: {
+              x: (shape.start.x * drawWidth) / img.width,
+              y: (shape.start.y * drawHeight) / img.height
+            },
+            end: {
+              x: (shape.end.x * drawWidth) / img.width,
+              y: (shape.end.y * drawHeight) / img.height
+            }
+          };
+          
+          drawShape(ctx, shape.type, scaledShape.start, scaledShape.end, shape.color, false);
+        });
+      }
+    };
+    
+    img.src = imageUrl;
+  }, [imageUrl, shapes, width, height]);
+  
+  return (
+    <div className="relative flex items-center justify-center overflow-hidden" style={{ width: '100%', height: 'auto', minHeight: '100px' }}>
+      <canvas 
+        ref={canvasRef} 
+        width={width} 
+        height={height}
+        className="max-w-full object-contain"
+      />
+    </div>
+  );
+};
+
 export const ExportTab: React.FC<ExportTabProps> = ({ tutorialId }) => {
   const [docTitle, setDocTitle] = useState('My Documentation');
   const [includeScreenshots, setIncludeScreenshots] = useState(true);
@@ -42,6 +153,14 @@ export const ExportTab: React.FC<ExportTabProps> = ({ tutorialId }) => {
   const [tutorial, setTutorial] = useState<Tutorial | null>(null);
   const [steps, setSteps] = useState<Step[]>([]);
   const [imageDataUrls, setImageDataUrls] = useState<Record<string, string>>({});
+  const [hasMarkupAnnotations, setHasMarkupAnnotations] = useState(false);
+  const [showMarkupInPreview, setShowMarkupInPreview] = useState(false);
+  
+  // Get the store state for shape data to check if we have any markup
+  const imageShapeData = useStepsStore(state => state.imageShapeData);
+
+  // Add refs for preview canvases
+  const previewCanvasRefs = useRef<Record<string, HTMLCanvasElement | null>>({});
 
   // Load tutorial details and steps when tutorialId changes
   useEffect(() => {
@@ -49,6 +168,14 @@ export const ExportTab: React.FC<ExportTabProps> = ({ tutorialId }) => {
       loadTutorialData();
     }
   }, [tutorialId]);
+  
+  // Check if there are markup annotations available
+  useEffect(() => {
+    // The shape data is an object with image paths as keys and arrays of shapes as values
+    const shapeDataEntries = Object.entries(imageShapeData);
+    const hasShapes = shapeDataEntries.some(([_, shapes]) => shapes && shapes.length > 0);
+    setHasMarkupAnnotations(hasShapes);
+  }, [imageShapeData]);
 
   const loadTutorialData = async () => {
     if (!tutorialId) return;
@@ -100,6 +227,17 @@ export const ExportTab: React.FC<ExportTabProps> = ({ tutorialId }) => {
     setExportResult(null);
     
     try {
+      // Prepare shape data for export - we need to get this from the StepsTab
+      // The best approach is to use a custom event to request the shape data from StepsTab
+      const shapeDataEvent = new CustomEvent('request-shape-data', {
+        detail: { tutorialId },
+        bubbles: true,
+        cancelable: true
+      });
+      document.dispatchEvent(shapeDataEvent);
+
+      // Wait for the shape data to be sent to the main process (handled by StepsTab)
+      
       // Call export service via IPC
       const options = {
         docTitle,
@@ -137,6 +275,32 @@ export const ExportTab: React.FC<ExportTabProps> = ({ tutorialId }) => {
     ? [...steps].sort((a, b) => a.order - b.order).slice(0, 3) 
     : [];
 
+  // Draw markup on preview canvases when enabled
+  useEffect(() => {
+    previewSteps.forEach((step) => {
+      const key = String(step.id);
+      const canvas = previewCanvasRefs.current[key];
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      const img = new window.Image();
+      img.onload = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        if (showMarkupInPreview) {
+          let shapes: any[] = [];
+          if (step.screenshotPath && typeof step.screenshotPath === 'string' && imageShapeData && typeof imageShapeData === 'object' && imageShapeData[step.screenshotPath]) {
+            shapes = imageShapeData[step.screenshotPath];
+          }
+          shapes.forEach(shape => {
+            drawShape(ctx, shape.type, shape.start, shape.end, shape.color, false);
+          });
+        }
+      };
+      img.src = imageDataUrls[String(step.id)];
+    });
+  }, [showMarkupInPreview, previewSteps, imageDataUrls, imageShapeData]);
+
   return (
     <div className="p-6 bg-white h-full flex space-x-6">
       {/* Left Column: Settings */} 
@@ -159,6 +323,31 @@ export const ExportTab: React.FC<ExportTabProps> = ({ tutorialId }) => {
           </div>
           <ToggleSwitch label="Include Screenshots" enabled={includeScreenshots} onChange={setIncludeScreenshots} />
           <ToggleSwitch label="Include Step Numbers" enabled={includeStepNumbers} onChange={setIncludeStepNumbers} />
+          
+          {/* Show this section only if we have markup data */}
+          {hasMarkupAnnotations && (
+            <div className="border-t border-gray-200 pt-3 mt-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-gray-700">Markup Annotations</span>
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                  Available
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Your markup annotations will be applied to screenshots during export.
+              </p>
+              <div className="mt-2">
+                <ToggleSwitch 
+                  label="Show markup in preview" 
+                  enabled={showMarkupInPreview} 
+                  onChange={setShowMarkupInPreview} 
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  (Preview markup is simulated and may differ from final export)
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Export Format */} 
@@ -240,11 +429,12 @@ export const ExportTab: React.FC<ExportTabProps> = ({ tutorialId }) => {
                 </div>
                 {includeScreenshots && (
                   <div className="pl-6 py-2">
-                    {step.screenshotPath && step.id && imageDataUrls[step.id] ? (
-                      <img 
-                        src={imageDataUrls[step.id]} 
-                        alt={`Screenshot for step ${index + 1}`}
-                        className="w-full border rounded shadow-sm"
+                    {step.screenshotPath && step.id && imageDataUrls[String(step.id)] ? (
+                      <PreviewCanvas
+                        imageUrl={imageDataUrls[String(step.id)]}
+                        shapes={imageShapeData[step.screenshotPath || ''] || []}
+                        width={200}
+                        height={150}
                       />
                     ) : (
                       <div className="w-full aspect-video bg-gray-100 border rounded flex items-center justify-center">

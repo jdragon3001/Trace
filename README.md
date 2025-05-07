@@ -9,6 +9,30 @@ OpenScribe is an Electron-based application for creating step-by-step guides wit
 - Add text descriptions, keyboard shortcuts, and annotations
 - Export guides as PDF or DOCX documentation with customizable options
 
+### Screen Capture
+- Full screen captures
+- Auto-capture on click or Enter key
+- Organized in steps for easy tutorial creation
+
+### Markup and Annotation
+- Add markup shapes (circles, rectangles, arrows, lines) to screenshots
+- Color selection for different markup elements
+- Shape manipulation (move, resize, delete)
+- Markup shapes appear in previews and exports
+- Changes are saved automatically with the tutorial
+
+### Exports
+- Export to PDF or DOCX formats
+- Customizable export options
+- Include/exclude screenshots
+- Include/exclude step numbers
+- Export with annotations visible on images
+
+### Project Management
+- Create and organize multiple projects
+- Create multiple tutorials within each project
+- Rename, edit, and delete projects and tutorials
+
 ## Development
 
 ### Prerequisites
@@ -84,6 +108,12 @@ npm run package
 This will generate platform-specific packages in the `out` directory.
 
 ## Recent Updates
+
+### Markup Enhancements (2024-07-10)
+- Improved markup handling to allow editing shapes until export
+- Shapes are now stored in memory and can be edited multiple times
+- No more embedded markups in images until export occurs
+- Better user experience when annotating screenshots
 
 ### Export Functionality (2024-07-05)
 - Added PDF and DOCX export options

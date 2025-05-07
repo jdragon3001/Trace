@@ -65,13 +65,39 @@ try {
     setCurrentProject: (projectId: string) => ipcRenderer.invoke(IpcChannels.SET_CURRENT_PROJECT, projectId),
     setCurrentTutorial: (tutorialId: string) => ipcRenderer.invoke(IpcChannels.SET_CURRENT_TUTORIAL, tutorialId),
     
+    // Recording Settings
+    updateRecordingSettings: (settings: { autoCapture: boolean, autoCaptureEnter: boolean }) => 
+      ipcRenderer.invoke(IpcChannels.UPDATE_RECORDING_SETTINGS, settings),
+    
     // Export APIs
     exportProject: (format: string, steps: unknown[], filePath: string) => 
       ipcRenderer.invoke(IpcChannels.EXPORT_PROJECT, format, steps, filePath),
     exportTutorial: (tutorialId: string, options: unknown) => 
       ipcRenderer.invoke(IpcChannels.EXPORT_TUTORIAL, tutorialId, options),
+    exportPrepareShapes: (tutorialId: string, shapeData: Record<string, Array<any>>) =>
+      ipcRenderer.invoke(IpcChannels.EXPORT_PREPARE_SHAPES, tutorialId, shapeData),
     loadImageAsDataUrl: (imagePath: string): Promise<string> => 
-      ipcRenderer.invoke('load-image-as-data-url', imagePath)
+      ipcRenderer.invoke(IpcChannels.LOAD_IMAGE_AS_DATA_URL, imagePath),
+      
+    // File operations
+    openFileDialog: (options: {
+      title?: string;
+      defaultPath?: string;
+      filters?: Array<{ name: string; extensions: string[] }>;
+      properties?: Array<string>;
+    }) => ipcRenderer.invoke(IpcChannels.OPEN_FILE_DIALOG, options),
+    
+    copyImageFile: (options: {
+      sourcePath: string;
+      tutorialId: string;
+      stepId: string;
+      makeBackup?: boolean;
+    }) => ipcRenderer.invoke(IpcChannels.COPY_IMAGE_FILE, options),
+    
+    saveDataUrlToTempFile: (options: {
+      dataUrl: string;
+      fileType: string;
+    }) => ipcRenderer.invoke(IpcChannels.SAVE_DATA_URL_TO_TEMP_FILE, options)
   });
   console.log('[Preload] window.electronAPI exposed successfully.');
 } catch (error) {

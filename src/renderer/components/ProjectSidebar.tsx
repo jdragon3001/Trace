@@ -218,43 +218,45 @@ export const ProjectSidebar = forwardRef<ProjectSidebarRef, ProjectSidebarProps>
   };
 
   return (
-    <div className={`w-64 bg-gray-50 flex flex-col h-full border-r border-gray-200 ${className}`} ref={dropdownRef}>
-      <div className="p-4 border-b border-gray-200 bg-white">
-        <h2 className="text-lg font-semibold text-gray-800">Projects</h2>
+    <div className={`w-64 bg-white flex flex-col h-full border-r border-gray-200 ${className}`} ref={dropdownRef}>
+      <div className="p-4 border-b border-gray-200">
+        <h2 className="text-lg font-medium text-gray-700">Projects</h2>
       </div>
       
-      <div className="flex-1 overflow-y-auto p-3 space-y-4">
+      <div className="flex-1 overflow-y-auto px-2 py-3 space-y-6">
         {/* New Project Button */}
-        <button
-          onClick={onCreateProject}
-          className="flex items-center w-full px-3 py-2 text-sm rounded-md bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
-        >
-          <PlusCircleIcon className="h-5 w-5 mr-2" />
-          <span>New Project</span>
-        </button>
+        <div className="px-2">
+          <button
+            onClick={onCreateProject}
+            className="flex items-center w-full px-4 py-2 text-sm rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+          >
+            <PlusCircleIcon className="h-5 w-5 mr-2 text-gray-500" />
+            <span>New Project</span>
+          </button>
+        </div>
         
         {/* Projects Section */}
-        <div className="space-y-1">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-3 pb-1">
-            All Projects
+        <div>
+          <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider px-4 pb-2">
+            ALL PROJECTS
           </h3>
           
           {isLoading ? (
-            <div className="px-3 py-2 text-sm text-gray-500">Loading projects...</div>
+            <div className="px-4 py-2 text-sm text-gray-500">Loading projects...</div>
           ) : projects.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-gray-500">No projects yet. Create your first one!</div>
+            <div className="px-4 py-2 text-sm text-gray-500">No projects yet. Create your first one!</div>
           ) : (
-            <div className="space-y-1">
+            <div>
               {projects.map(project => (
-                <div key={project.id || 'unknown'} className="space-y-0.5">
+                <div key={project.id || 'unknown'} className="mb-1">
                   <div 
-                    className={`flex items-center px-3 py-2 text-sm rounded-md cursor-pointer group ${
-                      selectedProjectId === project.id ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100 text-gray-700'
+                    className={`flex items-center px-4 py-2 text-sm cursor-pointer group ${
+                      selectedProjectId === project.id ? 'bg-gray-200 text-gray-800' : 'hover:bg-gray-100 text-gray-700'
                     }`}
                   >
                     <button
                       onClick={() => project.id && toggleProjectExpand(project.id)}
-                      className="mr-1 p-0.5 text-gray-400 hover:text-gray-700 focus:outline-none"
+                      className="mr-1 text-gray-400 hover:text-gray-700 focus:outline-none"
                     >
                       {project.id && expandedProjects[project.id] ? (
                         <ChevronDownIcon className="h-4 w-4" />
@@ -263,7 +265,7 @@ export const ProjectSidebar = forwardRef<ProjectSidebarRef, ProjectSidebarProps>
                       )}
                     </button>
                     
-                    <FolderIcon className="h-5 w-5 mr-2 text-yellow-500" />
+                    <FolderIcon className="h-5 w-5 mr-2 text-gray-500" />
                     
                     <span 
                       className="flex-1 truncate"
@@ -275,7 +277,7 @@ export const ProjectSidebar = forwardRef<ProjectSidebarRef, ProjectSidebarProps>
                     
                     <div className="relative">
                       <button 
-                        className="p-1 opacity-100 hover:bg-gray-200 rounded"
+                        className="p-1 opacity-0 group-hover:opacity-100 hover:bg-gray-200 rounded"
                         title="Project options"
                         onClick={(e) => project.id && toggleDropdown(`project-${project.id}`, e)}
                       >
@@ -299,29 +301,26 @@ export const ProjectSidebar = forwardRef<ProjectSidebarRef, ProjectSidebarProps>
                   
                   {/* Tutorials within Project */}
                   {project.id && expandedProjects[project.id] && (
-                    <div className="pl-9 space-y-0.5">
+                    <div className="pl-9">
                       {project.id && tutorialsByProject[project.id]?.length ? (
                         tutorialsByProject[project.id].map((tutorial: Tutorial) => (
                           <div
                             key={tutorial.id || 'unknown'}
-                            className={`flex items-center px-3 py-2 text-sm rounded-md cursor-pointer ${
+                            className={`flex items-center px-4 py-2 text-sm cursor-pointer group ${
                               selectedTutorialId === tutorial.id
-                                ? 'bg-blue-50 text-blue-600'
-                                : 'hover:bg-gray-100 text-gray-600'
+                                ? 'bg-gray-100 text-gray-800'
+                                : 'hover:bg-gray-50 text-gray-600'
                             }`}
                             onClick={() => tutorial.id && handleTutorialClick(tutorial.id)}
                           >
-                            <DocumentTextIcon className="h-4 w-4 mr-2" />
+                            <DocumentTextIcon className="h-4 w-4 mr-2 text-gray-400" />
                             <span className="truncate flex-1" title={tutorial.title}>
                               {tutorial.title}
                             </span>
-                            {tutorial.status === 'draft' && (
-                              <span className="mr-2 text-xs bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded-full">Draft</span>
-                            )}
                             
                             <div className="relative">
                               <button 
-                                className="p-1 opacity-100 hover:bg-gray-200 rounded"
+                                className="p-1 opacity-0 group-hover:opacity-100 hover:bg-gray-200 rounded"
                                 title="Tutorial options"
                                 onClick={(e) => tutorial.id && toggleDropdown(`tutorial-${tutorial.id}`, e)}
                               >
@@ -344,12 +343,12 @@ export const ProjectSidebar = forwardRef<ProjectSidebarRef, ProjectSidebarProps>
                           </div>
                         ))
                       ) : (
-                        <div className="px-3 py-2 text-xs text-gray-500 italic">No tutorials yet</div>
+                        <div className="px-4 py-2 text-xs text-gray-500 italic">No tutorials yet</div>
                       )}
                       
                       {/* New Tutorial Button */}
                       <button
-                        className="flex items-center w-full px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
+                        className="flex items-center w-full px-4 py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-50"
                         onClick={() => project.id && handleCreateTutorial(project.id)}
                       >
                         <PlusCircleIcon className="h-3.5 w-3.5 mr-1" />
@@ -364,36 +363,38 @@ export const ProjectSidebar = forwardRef<ProjectSidebarRef, ProjectSidebarProps>
         </div>
         
         {/* Recent Tutorials Section */}
-        <div className="space-y-1">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-3 pb-1">
-            Recent Tutorials
+        <div>
+          <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider px-4 pb-2">
+            RECENT TUTORIALS
           </h3>
           
           {isLoading ? (
-            <div className="px-3 py-2 text-sm text-gray-500">Loading recent tutorials...</div>
+            <div className="px-4 py-2 text-sm text-gray-500">Loading recent tutorials...</div>
           ) : recentTutorials.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-gray-500">No recent tutorials</div>
+            <div className="px-4 py-2 text-sm text-gray-500">No recent tutorials</div>
           ) : (
-            <div className="space-y-0.5">
+            <div>
               {recentTutorials.slice(0, 5).map(tutorial => (
                 <div
                   key={tutorial.id || 'unknown'}
-                  className={`flex items-center px-3 py-2 text-sm rounded-md cursor-pointer ${
+                  className={`flex items-center px-4 py-2 text-sm cursor-pointer group ${
                     selectedTutorialId === tutorial.id
-                      ? 'bg-blue-50 text-blue-600'
-                      : 'hover:bg-gray-100 text-gray-600'
+                      ? 'bg-gray-100 text-gray-800'
+                      : 'hover:bg-gray-50 text-gray-600'
                   }`}
                   onClick={() => tutorial.id && handleTutorialClick(tutorial.id)}
                 >
-                  <ClockIcon className="h-4 w-4 mr-2 flex-shrink-0" />
-                  <span className="truncate flex-1" title={tutorial.title}>
-                    {tutorial.title}
-                  </span>
-                  <span className="mr-2 text-xs text-gray-400">{formatDate(tutorial.updatedAt)}</span>
+                  <ClockIcon className="h-4 w-4 mr-2 flex-shrink-0 text-gray-400" />
+                  <div className="flex flex-col flex-1 min-w-0">
+                    <span className="truncate" title={tutorial.title}>
+                      {tutorial.title}
+                    </span>
+                    <span className="text-xs text-gray-400">{formatDate(tutorial.updatedAt)}</span>
+                  </div>
                   
                   <div className="relative">
                     <button 
-                      className="p-1 opacity-100 hover:bg-gray-200 rounded"
+                      className="p-1 opacity-0 group-hover:opacity-100 hover:bg-gray-200 rounded"
                       title="Tutorial options"
                       onClick={(e) => tutorial.id && toggleDropdown(`recent-${tutorial.id}`, e)}
                     >
@@ -421,9 +422,9 @@ export const ProjectSidebar = forwardRef<ProjectSidebarRef, ProjectSidebarProps>
       </div>
       
       {/* Manage Projects Button */}
-      <div className="p-3 border-t border-gray-200">
+      <div className="p-3 border-t border-gray-100">
         <button
-          className="flex items-center justify-center w-full px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md transition-colors"
+          className="flex items-center justify-center w-full px-4 py-2 text-sm border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-md transition-colors"
           onClick={() => {
             // Show Manage Projects dialog (to be implemented)
           }}

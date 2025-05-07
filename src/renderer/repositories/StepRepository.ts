@@ -288,12 +288,85 @@ export class StepRepository {
   }
   
   /**
-   * Clear all cached data
+   * Clear all steps from cache
    */
   public clearCache(): void {
+    console.log('[StepRepository] Clearing cache');
     this.steps.clear();
     this.stepsByTutorial.clear();
     this.currentTutorialId = null;
-    console.log('[StepRepository] Cache cleared');
+  }
+  
+  /**
+   * Get a step by its ID
+   * First checks the cache, then falls back to the main process if needed
+   */
+  public async getStepById(stepId: string): Promise<SharedStep | null> {
+    console.log(`[StepRepository] Getting step by ID: ${stepId}`);
+    
+    // Check cache first
+    const cachedStep = this.steps.get(stepId);
+    if (cachedStep) {
+      console.log(`[StepRepository] Step ${stepId} found in cache`);
+      return cachedStep;
+    }
+    
+    // If not in cache, try to fetch it from the main process
+    try {
+      // First, try to get all steps if we have a current tutorial
+      if (this.currentTutorialId) {
+        console.log(`[StepRepository] Attempting to find step ${stepId} in current tutorial ${this.currentTutorialId}`);
+        const steps = await window.electronAPI.getStepsByTutorial(this.currentTutorialId);
+        const step = steps.find(s => s.id === stepId);
+        
+        if (step) {
+          // Cache the step for future use
+          this.cacheStep(step as Step);
+          console.log(`[StepRepository] Step ${stepId} found in tutorial ${this.currentTutorialId}`);
+          return step;
+        }
+      }
+      
+      // If no current tutorial or step not found in current tutorial,
+      // we need to try a different approach - get all tutorials
+      console.log(`[StepRepository] Step ${stepId} not found in current tutorial. Trying to find it in all tutorials.`);
+      
+      // This requires an API to get all tutorials, which you might need to implement
+      try {
+        // Get all projects first
+        const projects = await window.electronAPI.getProjects();
+        
+        // For each project, get tutorials and check their steps
+        for (const project of projects) {
+          if (!project.id) continue;
+          
+          const tutorials = await window.electronAPI.getTutorialsByProject(project.id);
+          
+          for (const tutorial of tutorials) {
+            if (!tutorial.id) continue;
+            
+            console.log(`[StepRepository] Checking tutorial ${tutorial.id} for step ${stepId}`);
+            const steps = await window.electronAPI.getStepsByTutorial(tutorial.id);
+            const step = steps.find(s => s.id === stepId);
+            
+            if (step) {
+              // Cache the step for future use
+              this.cacheStep(step as Step);
+              console.log(`[StepRepository] Step ${stepId} found in tutorial ${tutorial.id}`);
+              return step;
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`[StepRepository] Error searching for step ${stepId} across tutorials:`, error);
+      }
+      
+      // If we got here, the step wasn't found
+      console.warn(`[StepRepository] Step ${stepId} not found in any tutorial`);
+      return null;
+    } catch (error) {
+      console.error(`[StepRepository] Error getting step ${stepId}:`, error);
+      return null;
+    }
   }
 } 

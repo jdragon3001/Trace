@@ -40,6 +40,10 @@ export const App: React.FC = () => {
   const [currentTutorial, setCurrentTutorial] = useState<Tutorial | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Recording settings state
+  const [autoCapture, setAutoCapture] = useState(true);
+  const [autoCaptureEnter, setAutoCaptureEnter] = useState(false);
+
   // Modal state
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [showNewTutorialModal, setShowNewTutorialModal] = useState(false);
@@ -50,6 +54,16 @@ export const App: React.FC = () => {
 
   // Flag to indicate a tutorial selection triggered a navigation intention
   const [navigateToRecordTab, setNavigateToRecordTab] = useState(false);
+
+  // Send initial recording settings to main process when component mounts
+  useEffect(() => {
+    if (window.electronAPI?.updateRecordingSettings) {
+      window.electronAPI.updateRecordingSettings({
+        autoCapture,
+        autoCaptureEnter
+      });
+    }
+  }, []);
 
   // Load current project and tutorial when the app starts
   useEffect(() => {
@@ -71,6 +85,12 @@ export const App: React.FC = () => {
           ...prev,
           Project: { ...prev.Project, projectId: project.id }
         }));
+      }
+      
+      // Automatically navigate to the Record tab if a tutorial exists
+      if (tutorial && tutorial.id) {
+        console.log('[App] Auto-navigating to most recent tutorial:', tutorial.title);
+        setNavigateToRecordTab(true);
       }
     } catch (error) {
       console.error('Error loading current state:', error);
@@ -250,23 +270,41 @@ export const App: React.FC = () => {
     }
   };
 
+  // Handle recording settings change
+  const handleRecordingSettingChange = (setting: string, value: boolean) => {
+    console.log(`[App] Updating recording setting: ${setting} = ${value}`);
+    if (setting === 'autoCapture') {
+      setAutoCapture(value);
+    } else if (setting === 'autoCaptureEnter') {
+      setAutoCaptureEnter(value);
+    }
+    
+    // Send settings to main process
+    window.electronAPI?.updateRecordingSettings?.({
+      autoCapture: setting === 'autoCapture' ? value : autoCapture,
+      autoCaptureEnter: setting === 'autoCaptureEnter' ? value : autoCaptureEnter
+    });
+  };
+
   // Render tabs based on the active tab
   const renderTabs = () => {
     return (
       <>
-        <div style={{ display: activeTab === 'Record' ? 'block' : 'none' }}>
+        <div style={{ display: activeTab === 'Record' ? 'block' : 'none' }} className={activeTab === 'Record' ? 'h-full' : ''}>
           <RecordingTab 
             projectId={currentProject?.id}
             tutorialId={currentTutorial?.id}
+            autoCapture={autoCapture}
+            autoCaptureEnter={autoCaptureEnter}
           />
         </div>
-        <div style={{ display: activeTab === 'EditSteps' ? 'block' : 'none' }}>
+        <div style={{ display: activeTab === 'EditSteps' ? 'block' : 'none' }} className={activeTab === 'EditSteps' ? 'h-full' : ''}>
           <StepsTab tutorialId={currentTutorial?.id} />
         </div>
-        <div style={{ display: activeTab === 'Export' ? 'block' : 'none' }}>
+        <div style={{ display: activeTab === 'Export' ? 'block' : 'none' }} className={activeTab === 'Export' ? 'h-full' : ''}>
           <ExportTab tutorialId={currentTutorial?.id} />
         </div>
-        <div style={{ display: activeTab === 'Project' ? 'block' : 'none' }}>
+        <div style={{ display: activeTab === 'Project' ? 'block' : 'none' }} className={activeTab === 'Project' ? 'h-full' : ''}>
           {tabsState.Project.projectId ? (
             <TutorialList 
               projectId={tabsState.Project.projectId} 
@@ -285,66 +323,94 @@ export const App: React.FC = () => {
 
   // Sidebar for recording options
   const RightSidebarContent: React.FC = () => (
-    <div className="w-72 bg-gray-100 p-5 flex flex-col space-y-6 border-l border-gray-200">
-      {/* Recording Options Card */}
-      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-        <h3 className="text-base font-semibold mb-4 text-gray-800">Recording Options</h3>
-        <div className="space-y-4">
-          <div>
-            <label htmlFor="capture-mode" className="block text-sm font-medium text-gray-700 mb-1">Capture Mode</label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <ComputerDesktopIconSolid className="h-5 w-5 text-gray-400" aria-hidden="true" />
-              </div>
-              <select
-                id="capture-mode"
-                name="capture-mode"
-                className="block w-full pl-10 pr-10 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 shadow-sm bg-white"
-                defaultValue="Full Screen"
-              >
-                <option>Full Screen</option>
-              </select>
-            </div>
-          </div>
-          <div>
-            <h4 className="text-sm font-medium text-gray-700 mb-2">Capture Options</h4>
-            <div className="space-y-2">
-              <div className="flex items-center">
-                <input id="auto-capture" name="auto-capture" type="checkbox" defaultChecked className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" />
-                <label htmlFor="auto-capture" className="ml-2 block text-sm text-gray-900">Auto-capture on click</label>
-              </div>
-              <div className="flex items-center">
-                <input id="include-cursor" name="include-cursor" type="checkbox" defaultChecked className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" />
-                <label htmlFor="include-cursor" className="ml-2 block text-sm text-gray-900">Include cursor in screenshots</label>
-              </div>
-              <div className="flex items-center">
-                <input id="record-audio" name="record-audio" type="checkbox" className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" />
-                <label htmlFor="record-audio" className="ml-2 block text-sm text-gray-900">Record audio</label>
+    <div className="flex flex-col space-y-6 pt-6">
+      <div className="flex flex-col space-y-6 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div>
+          <h3 className="text-lg font-medium text-gray-800 mb-4">Recording Options</h3>
+          
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Capture Mode</label>
+              <div className="relative">
+                <select
+                  id="capture-mode"
+                  name="capture-mode"
+                  className="block w-full py-2 pl-3 pr-10 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-gray-500 sm:text-sm"
+                  defaultValue="Full Screen"
+                >
+                  <option>Full Screen</option>
+                </select>
+                <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
+                  <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 20 20" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M7 7l3-3 3 3m0 6l-3 3-3-3" />
+                  </svg>
+                </div>
               </div>
             </div>
-          </div>
-          <div>
-            <button className="mt-2 w-full text-sm bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 font-medium py-2 px-4 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500">
-              Advanced Settings
-            </button>
+
+            <div>
+              <h4 className="block text-sm font-medium text-gray-700 mb-3">Capture Options</h4>
+              <div className="space-y-3">
+                <div className="flex items-start">
+                  <div className="flex h-5 items-center">
+                    <input 
+                      id="auto-capture" 
+                      name="auto-capture" 
+                      type="checkbox" 
+                      checked={autoCapture}
+                      onChange={(e) => handleRecordingSettingChange('autoCapture', e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-gray-600 focus:ring-gray-500" 
+                    />
+                  </div>
+                  <div className="ml-3 text-sm">
+                    <label htmlFor="auto-capture" className="font-medium text-gray-700">Auto-capture on click</label>
+                    <p className="text-gray-500 text-xs">Automatically take screenshots when you click</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start">
+                  <div className="flex h-5 items-center">
+                    <input 
+                      id="auto-capture-enter" 
+                      name="auto-capture-enter" 
+                      type="checkbox" 
+                      checked={autoCaptureEnter}
+                      onChange={(e) => handleRecordingSettingChange('autoCaptureEnter', e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-gray-600 focus:ring-gray-500" 
+                    />
+                  </div>
+                  <div className="ml-3 text-sm">
+                    <label htmlFor="auto-capture-enter" className="font-medium text-gray-700">Auto-capture on pressing Enter</label>
+                    <p className="text-gray-500 text-xs">Automatically take screenshots when you press Enter</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div>
+              <button className="w-full text-sm bg-gray-50 hover:bg-gray-100 text-gray-700 font-medium py-2 px-4 border border-gray-300 rounded-md transition-colors">
+                Advanced Settings
+              </button>
+            </div>
           </div>
         </div>
       </div>
+      
       {/* Keyboard Shortcuts Card */}
-      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-        <h3 className="text-base font-semibold mb-3 text-gray-800">Keyboard Shortcuts</h3>
-        <div className="space-y-2 text-sm text-gray-700">
-          <div className="flex justify-between">
-            <span>Start/Pause</span>
-            <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded border border-gray-300 text-gray-600">Ctrl+Alt+R</span>
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <h3 className="text-lg font-medium text-gray-800 mb-4">Keyboard Shortcuts</h3>
+        <div className="space-y-3 text-sm">
+          <div className="flex justify-between items-center">
+            <span className="text-gray-700">Start/Pause</span>
+            <span className="font-mono text-xs bg-gray-50 px-2 py-1 rounded border border-gray-200 text-gray-600">Ctrl+Alt+R</span>
           </div>
-          <div className="flex justify-between">
-            <span>Stop Recording</span>
-            <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded border border-gray-300 text-gray-600">Ctrl+Alt+S</span>
+          <div className="flex justify-between items-center">
+            <span className="text-gray-700">Stop Recording</span>
+            <span className="font-mono text-xs bg-gray-50 px-2 py-1 rounded border border-gray-200 text-gray-600">Ctrl+Alt+X</span>
           </div>
-          <div className="flex justify-between">
-            <span>Manual Screenshot</span>
-            <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded border border-gray-300 text-gray-600">Ctrl+Alt+C</span>
+          <div className="flex justify-between items-center">
+            <span className="text-gray-700">Manual Screenshot</span>
+            <span className="font-mono text-xs bg-gray-50 px-2 py-1 rounded border border-gray-200 text-gray-600">Ctrl+Alt+C</span>
           </div>
         </div>
       </div>
@@ -353,7 +419,7 @@ export const App: React.FC = () => {
 
   // Main render
   return (
-    <div className="flex h-screen bg-white text-gray-800">
+    <div className="flex h-screen bg-gray-50 text-gray-800">
       {/* Left Sidebar - Projects */}
       <ProjectSidebar 
         ref={projectSidebarRef}
@@ -384,15 +450,14 @@ export const App: React.FC = () => {
               onClick={() => {
                 console.log("Record tab clicked, currentTutorial:", currentTutorial);
                 if (currentTutorial && currentTutorial.id) {
-                  console.log(`Navigating to Record tab with tutorial: ${currentTutorial.id}`);
                   switchTab('Record');
                 } else {
-                  // Alert user to select a tutorial first
-                  alert('Please select a tutorial first');
+                  alert('Please select or create a tutorial first.');
                 }
               }}
+              disabled={!currentTutorial || !currentTutorial.id}
             >
-              <VideoCameraIcon className="h-4 w-4 mr-1" />
+              <ComputerDesktopIconSolid className="h-4 w-4 mr-1" />
               Record
             </button>
             <button
@@ -400,13 +465,13 @@ export const App: React.FC = () => {
                 activeTab === 'EditSteps' ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-100'
               }`}
               onClick={() => {
-                if (currentTutorial) {
+                if (currentTutorial && currentTutorial.id) {
                   switchTab('EditSteps');
                 } else {
-                  // Alert user to select a tutorial first
-                  alert('Please select a tutorial first');
+                  alert('Please select or create a tutorial first.');
                 }
               }}
+              disabled={!currentTutorial || !currentTutorial.id}
             >
               <PencilSquareIcon className="h-4 w-4 mr-1" />
               Edit Steps
@@ -416,51 +481,40 @@ export const App: React.FC = () => {
                 activeTab === 'Export' ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-100'
               }`}
               onClick={() => {
-                if (currentTutorial) {
+                if (currentTutorial && currentTutorial.id) {
                   switchTab('Export');
                 } else {
-                  // Alert user to select a tutorial first
-                  alert('Please select a tutorial first');
+                  alert('Please select or create a tutorial first.');
                 }
               }}
+              disabled={!currentTutorial || !currentTutorial.id}
             >
               <ArrowDownTrayIcon className="h-4 w-4 mr-1" />
               Export
             </button>
           </div>
-          <div className="ml-auto flex items-center space-x-1">
-            <button className="p-1.5 rounded-md text-gray-500 hover:bg-gray-100">
-              <Cog6ToothIcon className="h-5 w-5" />
-            </button>
-            <button className="p-1.5 rounded-md text-gray-500 hover:bg-gray-100">
-              <QuestionMarkCircleIcon className="h-5 w-5" />
-            </button>
-          </div>
+          
+          {currentProject && (
+            <span className="text-sm text-gray-500 ml-auto">
+              Current Tutorial: <span className="font-medium text-gray-700">{currentTutorial?.title || 'N/A'}</span>
+            </span>
+          )}
         </nav>
-        
-        {/* Current Tutorial Info */}
-        {currentTutorial && (activeTab === 'Record' || activeTab === 'EditSteps' || activeTab === 'Export') && (
-          <div className="px-6 py-2 bg-gray-50 border-b border-gray-200">
-            <div className="flex items-center">
-              <span className="text-sm text-gray-500">Current Tutorial:</span>
-              <span className="ml-2 text-sm font-medium text-gray-800">{currentTutorial.title}</span>
-              {activeTab === 'Record' && (
-                <span className="ml-auto text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full">
-                  {currentTutorial.status}
-                </span>
-              )}
-            </div>
+
+        {/* Dynamic Content Area (where tabs are rendered) */}
+        <main className="flex-1 overflow-hidden bg-gray-50 flex"> 
+          <div className={`${activeTab === 'Record' ? 'w-2/3 pr-2' : 'flex-1'}`}>
+            {renderTabs()}
           </div>
-        )}
-        
-        {/* Main Content */}
-        <div className="flex-1 overflow-auto">
-          {renderTabs()}
-        </div>
+          
+          {/* Right Sidebar - only visible when recording tab is active */}
+          {activeTab === 'Record' && (
+            <div className="w-1/3 bg-gray-50 p-6 overflow-y-auto">
+              <RightSidebarContent />
+            </div>
+          )}
+        </main>
       </div>
-      
-      {/* Right Sidebar - Options */}
-      {(activeTab === 'Record') && <RightSidebarContent />}
       
       {/* Modals */}
       <CreateProjectModal 

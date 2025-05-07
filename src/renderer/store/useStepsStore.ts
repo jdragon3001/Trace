@@ -12,23 +12,36 @@ export interface DisplayStep {
   screenshotPath?: string;
 }
 
+export interface ShapeData {
+  id: string;
+  type: 'ellipse' | 'arrow' | 'line' | 'rectangle';
+  start: { x: number, y: number };
+  end: { x: number, y: number };
+  color: string;
+}
+
 interface StepsState {
   steps: DisplayStep[];
   isLoading: boolean;
+  imageShapeData: Record<string, ShapeData[]>;
   addStep: (newStep: RecordingStep) => void;
   setSteps: (steps: DisplayStep[]) => void; // For reordering, deleting multiple, loading
   updateStep: (originalId: string, updatedData: Partial<Omit<DisplayStep, 'displayId' | 'originalId'>>) => void;
   deleteStep: (originalId: string) => void;
   setLoading: (isLoading: boolean) => void;
   clearSteps: () => void;
+  saveShapesForImage: (imagePath: string, shapes: ShapeData[]) => void;
+  getShapesForImage: (imagePath: string) => ShapeData[];
+  clearImageShapeData: () => void;
 }
 
 export const useStepsStore = create<StepsState>()(
   devtools(
     immer(
-      (set) => ({
+      (set, get) => ({
         steps: [],
         isLoading: false,
+        imageShapeData: {},
 
         setLoading: (isLoading: boolean) => set((state: StepsState) => {
           state.isLoading = isLoading;
@@ -98,6 +111,21 @@ export const useStepsStore = create<StepsState>()(
           state.steps = recalculatedSteps;
         }),
 
+        // Shape data management
+        saveShapesForImage: (imagePath: string, shapes: ShapeData[]) => {
+          set((state) => ({
+            imageShapeData: {
+              ...state.imageShapeData,
+              [imagePath]: shapes
+            }
+          }));
+        },
+        
+        getShapesForImage: (imagePath: string) => {
+          return get().imageShapeData[imagePath] || [];
+        },
+        
+        clearImageShapeData: () => set({ imageShapeData: {} })
       })
     ),
     { name: 'StepsStore' }

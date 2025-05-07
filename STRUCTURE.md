@@ -44,6 +44,25 @@ Contains the core application code, split into main process, renderer process, a
 -   **UI Framework:** React with TypeScript.
 -   **Database:** Uses SQLite via better-sqlite3 for project, tutorial, and step data management.
 
+## UI Structure
+
+The application uses a multiple-sidebar layout:
+
+-   **Left Sidebar:** Project navigation and tutorial selection
+-   **Main Content Area:** Dynamic content based on active tab
+    -   Project Tab: Displays list of tutorials in the selected project
+    -   Record Tab: Screen recording interface
+    -   Edit Steps Tab: Interface for editing captured tutorial steps
+    -   Export Tab: Options for exporting tutorials
+-   **Right Sidebar:** Context-specific options (only visible in certain tabs)
+    -   When Record Tab is active: Recording options panel
+        -   Capture mode selection
+        -   Auto-capture on click toggle
+        -   Auto-capture on Enter key toggle
+        -   Keyboard shortcuts reference
+
+The UI implements responsive design for different screen sizes and follows a consistent design language.
+
 ## Database Schema
 
 The application uses SQLite to store project data with the following schema:
@@ -88,4 +107,35 @@ The database enforces referential integrity through foreign key constraints and 
 -   Refer to this document when adding new files or modules.
 -   Keep main, renderer, and shared code separated.
 -   Place reusable logic in services (main) or hooks/utils (renderer/shared).
--   Update this document if significant structural changes are made. 
+-   Update this document if significant structural changes are made.
+-   Maintain UI component relationships to prevent missing UI elements:
+    -   Record tab should always show the right sidebar with recording options
+    -   State should flow properly from App to child components for settings
+    -   UI updates should be tested across multiple tabs to ensure consistency 
+
+## Component Architecture
+
+- **App**: Main application container
+  - **ProjectSidebar**: Sidebar for project navigation
+  - **RecordingTab**: Screen recording interface
+  - **StepsTab**: Tutorial step editing interface
+    - **MarkupModal**: Image annotation tool with persistent shape data
+  - **ExportTab**: Documentation export interface
+
+## State Management
+
+The application uses a combination of React component state and global stores (using Zustand) for state management:
+
+- **App State**: Current project/tutorial selection, navigation state
+- **Recording State**: Recording settings, active recording status
+- **Steps State**: Tutorial steps, editing state, **shape data storage**
+- **Export State**: Export options and format selection
+
+## Data Flow
+
+1. User creates a project and tutorial
+2. Recording tab captures screenshots and step information
+3. StepsTab allows editing steps, descriptions, and annotating images
+   - **Markup shapes are stored in memory and associated with image paths**
+   - **Original images are preserved until export**
+4. ExportTab generates documentation with embedded markups 

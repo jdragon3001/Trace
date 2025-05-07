@@ -45,6 +45,9 @@ declare global {
       setCurrentProject: (projectId: string) => Promise<Project>;
       setCurrentTutorial: (tutorialId: string | null) => Promise<void>;
       
+      // Recording Settings
+      updateRecordingSettings: (settings: { autoCapture: boolean, autoCaptureEnter: boolean }) => Promise<void>;
+      
       // Export
       exportProject: (format: string, steps: RecordingStep[], filePath: string) => Promise<void>;
       exportTutorial: (tutorialId: string, options: {
@@ -53,7 +56,28 @@ declare global {
         includeStepNumbers: boolean;
         exportFormat: 'PDF' | 'DOCX';
       }) => Promise<string>;
+      exportPrepareShapes: (tutorialId: string, shapeData: Record<string, Array<any>>) => Promise<boolean>;
       loadImageAsDataUrl: (imagePath: string) => Promise<string>;
+      
+      // File operations
+      openFileDialog: (options: {
+        title?: string;
+        defaultPath?: string;
+        filters?: Array<{ name: string; extensions: string[] }>;
+        properties?: Array<'openFile' | 'openDirectory' | 'multiSelections' | 'showHiddenFiles'>;
+      }) => Promise<{ canceled: boolean; filePaths: string[] }>;
+      
+      copyImageFile: (options: {
+        sourcePath: string;
+        tutorialId: string;
+        stepId: string;
+        makeBackup?: boolean;
+      }) => Promise<string>;
+      
+      saveDataUrlToTempFile: (options: {
+        dataUrl: string;
+        fileType: string;
+      }) => Promise<string>;
     };
     systemPreferences: {
       getMediaAccessStatus: (mediaType: string) => Promise<string>;

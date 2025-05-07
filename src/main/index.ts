@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron'; // Uncomment ipcMain
+import { app, BrowserWindow, ipcMain, dialog } from 'electron'; // Uncomment ipcMain and dialog
 import path from 'path'; // Uncomment path
 import RecordingService from './services/RecordingService';
 import { protocol } from 'electron';
@@ -52,6 +52,16 @@ function createWindow() {
     }
   });
 
+  // Listen for keyboard events in the main process
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    // Prevent Enter key from being processed by the window when recording is active
+    if (input.key === 'Enter' && recordingServiceInstance?.getIsRecording) {
+      console.log('[MainWindow] Intercepted Enter key in before-input-event');
+      // Mark as handled to prevent it from being processed by the renderer
+      event.preventDefault();
+    }
+  });
+
   // Set Content Security Policy
   mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
     // Temporarily allow unsafe-eval for Webpack dev server compatibility
@@ -102,9 +112,43 @@ function createWindow() {
 
 function registerIpcHandlers() {
   // Register image loading handler
-  ipcMain.handle('load-image-as-data-url', async (_event, imagePath) => {
+  ipcMain.handle(IpcChannels.LOAD_IMAGE_AS_DATA_URL, async (_event, imagePath) => {
     console.log(`Attempting to load image as data URL: ${imagePath}`);
     return await ImageService.imagePathToDataUrl(imagePath);
+  });
+
+  // Register file dialog handler
+  ipcMain.handle(IpcChannels.OPEN_FILE_DIALOG, async (_event, options) => {
+    try {
+      console.log(`[FileService] Opening file dialog with options:`, options);
+      const result = await dialog.showOpenDialog(mainWindow!, options);
+      return result;
+    } catch (error) {
+      console.error('[FileService] Error opening file dialog:', error);
+      return { canceled: true, filePaths: [] };
+    }
+  });
+
+  // Register image copy handler
+  ipcMain.handle(IpcChannels.COPY_IMAGE_FILE, async (_event, options) => {
+    try {
+      console.log(`[ImageService] Copying image file:`, options);
+      return await ImageService.copyImageFile(options);
+    } catch (error) {
+      console.error('[ImageService] Error copying image file:', error);
+      return '';
+    }
+  });
+
+  // Register data URL to temp file handler
+  ipcMain.handle(IpcChannels.SAVE_DATA_URL_TO_TEMP_FILE, async (_event, options) => {
+    try {
+      console.log(`[ImageService] Saving data URL to temp file`);
+      return await ImageService.saveDataUrlToTempFile(options);
+    } catch (error) {
+      console.error('[ImageService] Error saving data URL to temp file:', error);
+      return '';
+    }
   });
 
   // Register existing step management handlers

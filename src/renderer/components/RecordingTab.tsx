@@ -6,7 +6,7 @@ import { RecordingStep } from '../../shared/types';
 
 // Placeholder for an icon component or SVG
 const ScreenIcon = () => (
-  <ComputerDesktopIcon className="w-20 h-20 text-gray-300 mx-auto mb-6" />
+  <ComputerDesktopIcon className="w-16 h-16 text-gray-300 mx-auto" />
 );
 
 interface RecordingState {
@@ -19,9 +19,11 @@ interface RecordingState {
 interface RecordingTabProps {
   projectId?: string;
   tutorialId?: string;
+  autoCapture?: boolean;
+  autoCaptureEnter?: boolean;
 }
 
-export const RecordingTab: React.FC<RecordingTabProps> = ({ projectId, tutorialId }) => {
+export const RecordingTab: React.FC<RecordingTabProps> = ({ projectId, tutorialId, autoCapture = true, autoCaptureEnter = false }) => {
   const [recordingState, setRecordingState] = useState<RecordingState>({
     isRecording: false,
     isPaused: false,
@@ -32,6 +34,29 @@ export const RecordingTab: React.FC<RecordingTabProps> = ({ projectId, tutorialI
   const [debugInfo, setDebugInfo] = useState<string>("");
   const [currentProjectId, setCurrentProjectId] = useState<string | undefined>(projectId);
   const [currentTutorialId, setCurrentTutorialId] = useState<string | undefined>(tutorialId);
+  const [autoCaptureEnabled, setAutoCaptureEnabled] = useState<boolean>(autoCapture); // Use the prop value
+  const [autoCaptureEnterEnabled, setAutoCaptureEnterEnabled] = useState<boolean>(autoCaptureEnter); // Use the prop value
+
+  // Add event listener to prevent Enter key from triggering UI actions during recording
+  useEffect(() => {
+    // Function to handle keydown events
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Only intercept Enter key when recording is active
+      if (event.key === 'Enter' && recordingState.isRecording) {
+        console.log('[RecordingTab] Preventing default Enter key behavior during recording');
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+
+    // Add event listener
+    window.addEventListener('keydown', handleKeyDown, true);
+
+    // Cleanup function
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [recordingState.isRecording]);
 
   // Update local state when props change
   useEffect(() => {
@@ -285,9 +310,43 @@ export const RecordingTab: React.FC<RecordingTabProps> = ({ projectId, tutorialI
     }
   };
 
+  // Add updated message text based on recording state and auto-capture setting
+  const getRecordingStatusMessage = () => {
+    if (!recordingState.isRecording) {
+      return 'Click Start Recording to begin capturing your actions';
+    }
+    
+    if (recordingState.isPaused) {
+      return 'Recording paused. Click Resume to continue';
+    }
+    
+    if (!autoCaptureEnabled && !autoCaptureEnterEnabled) {
+      return 'Recording in progress. Auto-capture is disabled - click manually to capture steps';
+    }
+
+    let message = 'Recording in progress. ';
+    if (autoCaptureEnabled) {
+      message += 'Click anywhere to capture steps automatically. ';
+    }
+    if (autoCaptureEnterEnabled) {
+      message += 'Press Enter to capture steps automatically. ';
+    }
+    
+    return message.trim();
+  };
+
+  // Update local state when capture settings props change
+  useEffect(() => {
+    setAutoCaptureEnabled(autoCapture);
+  }, [autoCapture]);
+
+  useEffect(() => {
+    setAutoCaptureEnterEnabled(autoCaptureEnter);
+  }, [autoCaptureEnter]);
+
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-full p-8 bg-white">
+      <div className="flex flex-col items-center justify-center h-full p-8 bg-gray-50">
         <div className="bg-red-50 border-l-4 border-red-400 p-4 rounded mb-6">
           <div className="flex">
             <div className="flex-shrink-0">
@@ -322,53 +381,87 @@ export const RecordingTab: React.FC<RecordingTabProps> = ({ projectId, tutorialI
     );
   }
 
-  // Keep only the central content area, remove the outer flex div
-  // Style this div to match the screenshot's central area
   return (
-    <div className="flex-1 flex flex-col items-center justify-center p-6">
-      <h1 className="text-2xl font-semibold text-gray-800 mb-1">Screen Recording</h1>
-      <p className="text-gray-500 mb-8">Capture your screen to create step-by-step documentation</p>
+    <div className="flex-1 flex flex-col h-full bg-gray-50">
+      {/* Add keyboard event capture overlay when recording is active */}
+      {recordingState.isRecording && (
+        <div
+          className="fixed inset-0 z-50"
+          style={{ 
+            pointerEvents: 'none', // Allow mouse events to pass through
+            backgroundColor: 'transparent' 
+          }}
+          tabIndex={0} // Make sure it can receive focus for keyboard events
+          onKeyDown={(e) => {
+            // Capture Enter key and prevent default behavior
+            if (e.key === 'Enter') {
+              console.log('[RecordingTab] Enter key blocked by overlay');
+              e.preventDefault();
+              e.stopPropagation();
+            }
+          }}
+        />
+      )}
 
-      <div className="text-center p-12 border-2 border-dashed border-gray-200 rounded-lg bg-gray-50 max-w-lg w-full">
-        <ScreenIcon />
-        <h2 className="text-xl font-semibold text-gray-700 mb-2">
-          {recordingState.isRecording 
-            ? recordingState.isPaused 
-              ? 'Recording Paused'
-              : 'Recording in Progress'
-            : 'Ready to Record'
-          }
-        </h2>
-        
-        <p className="text-gray-500 mb-6">
-          {recordingState.isRecording
-            ? 'Click anywhere to capture steps automatically'
-            : 'Click Start Recording to begin capturing your actions'
-          }
-        </p>
+      <div className="w-full pt-12 pb-16 flex flex-col items-center justify-center">
+        <h1 className="text-2xl font-medium text-gray-800 mb-2">Screen Recording</h1>
+        <p className="text-gray-600 mb-10">Capture your screen to create step-by-step documentation</p>
 
-        <div className="flex justify-center space-x-4">
-          <button
-            onClick={handleStartRecording}
-            className={`inline-flex items-center font-bold py-2 px-5 rounded focus:outline-none focus:shadow-outline ${
-              recordingState.isRecording && !recordingState.isPaused
-                ? 'bg-yellow-500 hover:bg-yellow-600 text-white'
-                : 'bg-gray-800 hover:bg-gray-900 text-white'
-            }`}
-          >
-            {getButtonIcon()}
-            {getButtonText()}
-          </button>
+        <div className="text-center p-12 border border-gray-200 rounded-lg bg-white w-4/5 max-w-xl shadow-sm">
+          <div className="bg-gray-50 rounded-full h-24 w-24 flex items-center justify-center mx-auto mb-6">
+            <ScreenIcon />
+          </div>
+          
+          <h2 className="text-xl font-medium text-gray-800 mb-3">
+            {recordingState.isRecording 
+              ? (recordingState.isPaused 
+                ? 'Recording Paused'
+                : 'Recording in Progress')
+              : 'Ready to Record'
+            }
+          </h2>
+          
+          <p className="text-gray-500 mb-8">
+            {getRecordingStatusMessage()}
+          </p>
 
-          {recordingState.isRecording && (
+          <div className="flex justify-center space-x-4">
             <button
-              onClick={handleStopRecording}
-              className="inline-flex items-center bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-5 rounded focus:outline-none focus:shadow-outline"
+              onClick={handleStartRecording}
+              onKeyDown={(e) => {
+                // Prevent Enter key from triggering this button during recording
+                if (e.key === 'Enter' && recordingState.isRecording) {
+                  e.preventDefault();
+                  return false;
+                }
+              }}
+              className={`inline-flex items-center py-2 px-5 rounded-md focus:outline-none text-sm font-medium ${
+                recordingState.isRecording && !recordingState.isPaused
+                  ? 'bg-gray-800 hover:bg-gray-700 text-white'
+                  : 'bg-gray-800 hover:bg-gray-700 text-white'
+              }`}
             >
-              <StopIcon className="w-5 h-5 mr-2" />
-              Stop Recording
+              {getButtonIcon()}
+              {getButtonText()}
             </button>
-          )}
+
+            {recordingState.isRecording && (
+              <button
+                onClick={handleStopRecording}
+                onKeyDown={(e) => {
+                  // Prevent Enter key from triggering this button during recording
+                  if (e.key === 'Enter' && recordingState.isRecording) {
+                    e.preventDefault();
+                    return false;
+                  }
+                }}
+                className="inline-flex items-center bg-red-600 hover:bg-red-700 text-white py-2 px-5 rounded-md focus:outline-none text-sm font-medium"
+              >
+                <StopIcon className="w-5 h-5 mr-2" />
+                Stop Recording
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

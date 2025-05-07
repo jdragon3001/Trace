@@ -14,37 +14,62 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   onProjectCreated,
   isLoading = false,
 }) => {
-  // Use refs for uncontrolled form elements
-  const projectNameRef = useRef<HTMLInputElement>(null);
-  const projectDescriptionRef = useRef<HTMLTextAreaElement>(null);
+  // Switch to controlled inputs for better reliability
+  const [projectName, setProjectName] = useState('');
+  const [projectDescription, setProjectDescription] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Reset form when modal opens
+  React.useEffect(() => {
+    if (isOpen) {
+      setProjectName('');
+      setProjectDescription('');
+      
+      // Focus the input field after a small delay to ensure modal is rendered
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+        }
+      }, 100);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    const name = projectNameRef.current?.value?.trim();
+    const name = projectName.trim();
+    const description = projectDescription.trim();
+    
     if (!name) return;
     
     try {
-      const project = await window.electronAPI.createProject(
-        name,
-        projectDescriptionRef.current?.value?.trim() || undefined
-      );
-      
+      const project = await window.electronAPI.createProject(name, description || undefined);
       onProjectCreated(project);
-      
-      // Reset form
-      if (projectNameRef.current) projectNameRef.current.value = '';
-      if (projectDescriptionRef.current) projectDescriptionRef.current.value = '';
+      setProjectName('');
+      setProjectDescription('');
+      onClose();
     } catch (error) {
       console.error('Error creating project:', error);
+      alert(`Failed to create project: ${error}`);
     }
+  };
+  
+  // Stop propagation for modal content to prevent click-through issues
+  const handleModalContentClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-96 shadow-xl">
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1000]"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-white rounded-lg p-6 w-96 shadow-xl relative"
+        onClick={handleModalContentClick}
+      >
         <h2 className="text-xl font-semibold mb-4">Create New Project</h2>
         
         <form onSubmit={handleSubmit}>
@@ -55,12 +80,13 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
             <input
               type="text"
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              ref={projectNameRef}
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
               placeholder="Enter project name"
               required
               autoFocus
               spellCheck="false"
-              key="project-name-input"
+              ref={inputRef}
             />
           </div>
           
@@ -70,11 +96,11 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
             </label>
             <textarea
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              ref={projectDescriptionRef}
+              value={projectDescription}
+              onChange={(e) => setProjectDescription(e.target.value)}
               placeholder="Add a short description for this project"
               rows={3}
               spellCheck="false"
-              key="project-description-input"
             />
           </div>
           
@@ -82,11 +108,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
             <button
               type="button"
               className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 focus:outline-none"
-              onClick={() => {
-                if (projectNameRef.current) projectNameRef.current.value = '';
-                if (projectDescriptionRef.current) projectDescriptionRef.current.value = '';
-                onClose();
-              }}
+              onClick={onClose}
             >
               Cancel
             </button>

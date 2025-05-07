@@ -19,6 +19,7 @@ function generateUniqueId(): string {
 export class RecordingService extends EventEmitter {
     private isRecording: boolean = false;
     private isPaused: boolean = false;
+    private isReadyToCapture: boolean = true; // New state to control capturing
     private steps: RecordingStep[] = [];
     private stepCounter: number = 0;
     // private keyboardListener: GlobalKeyboardListener | null = null;
@@ -32,6 +33,8 @@ export class RecordingService extends EventEmitter {
     private projectService: ProjectService;
     private activeProjectId: string | null = null;
     private activeTutorialId: string | null = null;
+    private autoCapture: boolean = true; // Default to true
+    private autoCaptureEnter: boolean = false;
 
     constructor(private mainWindow: BrowserWindow) {
         super();
@@ -40,6 +43,11 @@ export class RecordingService extends EventEmitter {
         this.imageService = new ImageService(this.tempDir);
         this.projectService = ProjectService.getInstance();
         this.initialize();
+    }
+
+    // Getter for isRecording state - add this
+    public get getIsRecording(): boolean {
+        return this.isRecording;
     }
 
     // Allow getting all steps
@@ -151,12 +159,14 @@ export class RecordingService extends EventEmitter {
         const state = {
             isRecording: this.isRecording,
             isPaused: this.isPaused,
+            isReadyToCapture: this.isReadyToCapture,
             currentStep: this.stepCounter,
             steps: this.steps,
         };
         console.log('[RecordingService] Emitting state update:', JSON.stringify({
             isRecording: state.isRecording, 
             isPaused: state.isPaused,
+            isReadyToCapture: state.isReadyToCapture,
             stepCount: this.steps.length,
             currentStep: this.stepCounter
         }));
@@ -215,6 +225,18 @@ export class RecordingService extends EventEmitter {
             }
         });
 
+        ipcMain.handle(IpcChannels.UPDATE_RECORDING_SETTINGS, (_event, settings: { autoCapture: boolean, autoCaptureEnter: boolean }) => {
+            try {
+                console.log('[RecordingService] Updating recording settings:', settings);
+                this.autoCapture = settings.autoCapture;
+                this.autoCaptureEnter = settings.autoCaptureEnter;
+                return { success: true };
+            } catch (error) {
+                console.error('[RecordingService] Error updating recording settings:', error);
+                return { success: false, error: `${error}` };
+            }
+        });
+
         ipcMain.handle(IpcChannels.GET_MEDIA_ACCESS_STATUS, async (_event, mediaType: string) => {
            try {
               const status = systemPreferences.getMediaAccessStatus(mediaType as any);
@@ -234,11 +256,12 @@ export class RecordingService extends EventEmitter {
             // Log *immediately* upon event firing
             console.log(`[!!! RecordingService] RAW mouseUp event detected (uiohook): Button ${event.button}, Clicks ${event.clicks} at (${event.x}, ${event.y}) - Timestamp: ${Date.now()}`);
 
-            console.log(`[RecordingService] Checking mouseUp conditions: isRecording=${this.isRecording}, isPaused=${this.isPaused}`);
+            console.log(`[RecordingService] Checking mouseUp conditions: isRecording=${this.isRecording}, isPaused=${this.isPaused}, autoCapture=${this.autoCapture}`);
 
             const currentTime = Date.now();
             
-            if (this.isRecording && !this.isPaused) {
+            // Only capture if autoCapture is enabled
+            if (this.isRecording && !this.isPaused && this.autoCapture) {
                 // Check if enough time has passed since the last capture
                 if (currentTime - this.lastCaptureTime >= this.captureDebounceTime) {
                     console.log('[RecordingService] Capturing step due to mouseUp...');
@@ -248,7 +271,32 @@ export class RecordingService extends EventEmitter {
                     console.log(`[RecordingService] Ignoring mouseUp event - debounce time not elapsed (${currentTime - this.lastCaptureTime}ms / ${this.captureDebounceTime}ms)`);
                 }
             } else {
-                console.log(`[RecordingService] Ignoring mouseUp event (Recording: ${this.isRecording}, Paused: ${this.isPaused}).`);
+                console.log(`[RecordingService] Ignoring mouseUp event (Recording: ${this.isRecording}, Paused: ${this.isPaused}, AutoCapture: ${this.autoCapture}).`);
+            }
+        };
+
+        // Add keyboard event handler for Enter key
+        const keyboardHandler = (event: any) => {
+            // Check if it's an Enter key press (keycode 28 in uIOhook)
+            if (event.keycode === 28) {
+                console.log('[RecordingService] Enter key detected');
+                
+                // Only capture if autoCaptureEnter is enabled
+                if (this.isRecording && !this.isPaused && this.autoCaptureEnter) {
+                    const currentTime = Date.now();
+                    
+                    // Check debounce like with mouse events
+                    if (currentTime - this.lastCaptureTime >= this.captureDebounceTime) {
+                        console.log('[RecordingService] Capturing step due to Enter key...');
+                        this.lastCaptureTime = currentTime;
+                        // Get current mouse position for the screenshot
+                        this.captureStep('enter', undefined);
+                    } else {
+                        console.log(`[RecordingService] Ignoring Enter key - debounce time not elapsed`);
+                    }
+                } else {
+                    console.log(`[RecordingService] Ignoring Enter key (Recording: ${this.isRecording}, Paused: ${this.isPaused}, AutoCaptureEnter: ${this.autoCaptureEnter}).`);
+                }
             }
         };
 
@@ -256,6 +304,7 @@ export class RecordingService extends EventEmitter {
         this.mouseUpHandler = mouseUpHandler;
 
         uIOhook.on('mouseup', mouseUpHandler);
+        uIOhook.on('keydown', keyboardHandler);
 
         try {
             uIOhook.start();
@@ -267,12 +316,8 @@ export class RecordingService extends EventEmitter {
         }
     }
 
-    private async captureStep(type: 'click', data?: MousePosition): Promise<void> {
+    private async captureStep(type: 'click' | 'enter', data?: MousePosition): Promise<void> {
         if (!this.isRecording || this.isPaused) return;
-        if (!data) {
-            console.warn('[RecordingService] captureStep called without mouse position data.');
-            return;
-        }
         
         // Verify we have active project and tutorial IDs
         if (!this.activeProjectId || !this.activeTutorialId) {
@@ -295,8 +340,10 @@ export class RecordingService extends EventEmitter {
 
             try {
                 // Use the captured step number for drawing
-                await this.imageService.drawCircle(screenshotPath, data, currentStepNumber);
-                console.log(`Circle drawn on screenshot for step ${currentStepNumber}: ${screenshotPath}`);
+                if (data) {
+                    await this.imageService.drawCircle(screenshotPath, data, currentStepNumber);
+                    console.log(`Circle drawn on screenshot for step ${currentStepNumber}: ${screenshotPath}`);
+                }
             } catch (drawError) {
                 console.error(`[RecordingService] Failed to draw circle on ${screenshotPath} for step ${currentStepNumber}:`, drawError);
             }
@@ -307,9 +354,11 @@ export class RecordingService extends EventEmitter {
                 number: currentStepNumber, // Use the captured step number
                 timestamp: timestamp,
                 screenshotPath: screenshotPath,
-                mousePosition: data,
+                mousePosition: data || { x: 0, y: 0 }, // Provide default if not available
                 windowTitle: '',
-                description: `Clicked at (${data.x}, ${data.y})`,
+                description: type === 'click' 
+                    ? `Clicked at (${data?.x || 0}, ${data?.y || 0})`
+                    : 'Captured on Enter key press',
             };
 
             // Add step to steps array
@@ -329,6 +378,10 @@ export class RecordingService extends EventEmitter {
     }
 
     private registerShortcuts(): void {
+        // Unregister any existing shortcuts first to avoid conflicts
+        this.unregisterShortcuts();
+        
+        // Now register the intended shortcuts
         if (!globalShortcut.register(KEYBOARD_SHORTCUTS.STOP_RECORDING, () => this.stopRecording())) {
              console.error(`Failed to register shortcut: ${KEYBOARD_SHORTCUTS.STOP_RECORDING}`);
         }
@@ -337,12 +390,25 @@ export class RecordingService extends EventEmitter {
         })) {
             console.error(`Failed to register shortcut: ${KEYBOARD_SHORTCUTS.PAUSE_RECORDING}`);
         }
+        
+        // Explicitly prevent Enter from doing anything in global shortcuts
+        // This should intercept it before it can trigger UI actions
+        globalShortcut.register('Enter', () => {
+            console.log('[RecordingService] Enter key intercepted by global shortcut handler');
+            // Do nothing - this prevents other handlers from getting it
+            return false;
+        });
+        
+        console.log('[RecordingService] Shortcuts registered, Enter key specially handled');
     }
 
     private unregisterShortcuts(): void {
+        console.log('[RecordingService] Unregistering all shortcuts');
         globalShortcut.unregister(KEYBOARD_SHORTCUTS.STOP_RECORDING);
         globalShortcut.unregister(KEYBOARD_SHORTCUTS.PAUSE_RECORDING);
-        // globalShortcut.unregisterAll(); // Alternative
+        globalShortcut.unregister('Enter');
+        globalShortcut.unregister('Return');
+        // Consider using unregisterAll() in production
     }
 
     public cleanup(): void {
@@ -363,6 +429,14 @@ export class RecordingService extends EventEmitter {
             } catch (error) {
                 console.error('[RecordingService] Error cleaning up uIOhook:', error);
             }
+        }
+        
+        // Make sure Enter key shortcuts are also unregistered
+        try {
+            globalShortcut.unregister('Enter');
+            globalShortcut.unregister('Return');
+        } catch (error) {
+            console.log('No Enter/Return shortcuts to unregister during cleanup');
         }
     }
 }

@@ -16,10 +16,10 @@ export const CreateTutorialModal: React.FC<CreateTutorialModalProps> = ({
   projectId,
   isLoading = false,
 }) => {
-  // Use ref for uncontrolled input
-  const tutorialTitleRef = useRef<HTMLInputElement>(null);
-  const modalKey = useRef(Date.now()).current;
-
+  // Use state for controlled input instead of ref
+  const [tutorialTitle, setTutorialTitle] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  
   // Initialize selectedProjectId with default empty string and update with projectId when available
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [projects, setProjects] = useState<Project[]>([]);
@@ -29,14 +29,19 @@ export const CreateTutorialModal: React.FC<CreateTutorialModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       // Reset state when modal opens
-      if (tutorialTitleRef.current) {
-        tutorialTitleRef.current.value = '';
-      }
+      setTutorialTitle('');
       
       loadProjects();
       if (projectId) {
         setSelectedProjectId(projectId);
       }
+      
+      // Focus the input after a short delay to ensure modal is rendered
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+        }
+      }, 100);
     }
   }, [isOpen, projectId]);
 
@@ -65,7 +70,7 @@ export const CreateTutorialModal: React.FC<CreateTutorialModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    const title = tutorialTitleRef.current?.value?.trim();
+    const title = tutorialTitle.trim();
     if (!title || !selectedProjectId) return;
     
     try {
@@ -81,7 +86,7 @@ export const CreateTutorialModal: React.FC<CreateTutorialModalProps> = ({
       onTutorialCreated(tutorial);
       
       // Reset form
-      if (tutorialTitleRef.current) tutorialTitleRef.current.value = '';
+      setTutorialTitle('');
       
       // Close modal
       onClose();
@@ -92,9 +97,20 @@ export const CreateTutorialModal: React.FC<CreateTutorialModalProps> = ({
     }
   };
 
+  // Stop propagation for modal content to prevent click-through issues
+  const handleModalContentClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+  };
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-96 shadow-xl">
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1000]"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-white rounded-lg p-6 w-96 shadow-xl relative"
+        onClick={handleModalContentClick}
+      >
         <h2 className="text-xl font-semibold mb-4">Create New Tutorial</h2>
         
         <form onSubmit={handleSubmit}>
@@ -105,12 +121,13 @@ export const CreateTutorialModal: React.FC<CreateTutorialModalProps> = ({
             <input
               type="text"
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              ref={tutorialTitleRef}
+              value={tutorialTitle}
+              onChange={(e) => setTutorialTitle(e.target.value)}
               placeholder="Enter tutorial title"
               required
               autoFocus
               spellCheck="false"
-              key={`tutorial-title-input-${modalKey}`}
+              ref={inputRef}
             />
           </div>
           
@@ -132,7 +149,6 @@ export const CreateTutorialModal: React.FC<CreateTutorialModalProps> = ({
                 value={selectedProjectId}
                 onChange={(e) => setSelectedProjectId(e.target.value)}
                 required
-                key={`project-select-${modalKey}`}
               >
                 <option value="" disabled>Select a project</option>
                 {projects.map(project => (
@@ -148,10 +164,7 @@ export const CreateTutorialModal: React.FC<CreateTutorialModalProps> = ({
             <button
               type="button"
               className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 focus:outline-none"
-              onClick={() => {
-                if (tutorialTitleRef.current) tutorialTitleRef.current.value = '';
-                onClose();
-              }}
+              onClick={onClose}
             >
               Cancel
             </button>

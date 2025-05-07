@@ -5,6 +5,7 @@ export const IpcChannels = {
   PAUSE_RECORDING: 'recording:pause' as const,
   RESUME_RECORDING: 'recording:resume' as const,
   RECORDING_STATUS: 'recording:status' as const,
+  UPDATE_RECORDING_SETTINGS: 'recording:update-settings' as const,
   
   // Step management
   GET_STEPS: 'steps:get' as const,
@@ -46,6 +47,7 @@ export const IpcChannels = {
   // Export
   EXPORT_PROJECT: 'project:export' as const,
   EXPORT_TUTORIAL: 'tutorial:export' as const,
+  EXPORT_PREPARE_SHAPES: 'export:prepare-shapes' as const,
   EXPORT_PROGRESS: 'export:progress' as const,
   EXPORT_COMPLETE: 'export:complete' as const,
   EXPORT_ERROR: 'export:error' as const,
@@ -58,6 +60,12 @@ export const IpcChannels = {
   
   // Settings
   SETTINGS_UPDATED: 'settings:updated' as const,
+  
+  // File operations
+  OPEN_FILE_DIALOG: 'file:open-dialog' as const,
+  COPY_IMAGE_FILE: 'file:copy-image' as const,
+  LOAD_IMAGE_AS_DATA_URL: 'file:load-image-as-data-url' as const,
+  SAVE_DATA_URL_TO_TEMP_FILE: 'file:save-data-url-to-temp' as const,
 } as const;
 
 // Re-export for type safety
