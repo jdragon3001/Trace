@@ -55,6 +55,29 @@ export const App: React.FC = () => {
   // Flag to indicate a tutorial selection triggered a navigation intention
   const [navigateToRecordTab, setNavigateToRecordTab] = useState(false);
 
+  // Shared state for steps to ensure real-time updates across tabs
+  const [realtimeSteps, setRealtimeSteps] = useState<any[]>([]);
+  
+  // Listen for step recorded notifications
+  useEffect(() => {
+    const handleStepCreated = (step: any) => {
+      console.log('[App] Received step created notification:', step);
+      // Update shared steps state to ensure all tabs see the new step
+      setRealtimeSteps(prev => [...prev, step]);
+    };
+    
+    const removeListener = window.electronAPI?.onStepCreated(handleStepCreated);
+    
+    return () => {
+      removeListener?.();
+    };
+  }, []);
+
+  // Function to clear realtime steps when switching tutorials
+  const clearRealtimeSteps = () => {
+    setRealtimeSteps([]);
+  };
+
   // Send initial recording settings to main process when component mounts
   useEffect(() => {
     if (window.electronAPI?.updateRecordingSettings) {
@@ -142,7 +165,7 @@ export const App: React.FC = () => {
       console.log(`[App] Setting current tutorial to: ${tutorialId}`);
       
       // First, get the tutorial to ensure it exists
-      const tutorial = await window.electronAPI.getTutorial(tutorialId);
+      const tutorial = await window.electronAPI?.getTutorial(tutorialId);
       
       if (!tutorial) {
         console.error(`[App] Tutorial with ID ${tutorialId} not found`);
@@ -154,6 +177,9 @@ export const App: React.FC = () => {
       // Set as current tutorial in main process
       await window.electronAPI.setCurrentTutorial(tutorialId);
       console.log('[App] Current tutorial after selection:', tutorial);
+      
+      // Clear realtime steps when switching tutorials
+      clearRealtimeSteps();
       
       // Ensure we also set the project if it's available
       if (tutorial.projectId) {
@@ -227,12 +253,8 @@ export const App: React.FC = () => {
         await projectSidebarRef.current.refreshProjects();
       }
       
-      // Switch to Project tab to show tutorial list, but don't start recording
-      setTabsState(prevState => ({
-        ...prevState,
-        Project: { ...prevState.Project, projectId: tutorial.projectId }
-      }));
-      setActiveTab('Project');
+      // Automatically switch to Record tab after tutorial creation
+      setNavigateToRecordTab(true);
       
       // Explicitly ensure expanded state for the project in the sidebar
       if (projectSidebarRef.current) {
@@ -290,33 +312,30 @@ export const App: React.FC = () => {
   const renderTabs = () => {
     return (
       <>
-        <div style={{ display: activeTab === 'Record' ? 'block' : 'none' }} className={activeTab === 'Record' ? 'h-full' : ''}>
+        {activeTab === 'Record' && tabsState.Record.visible && (
           <RecordingTab 
-            projectId={currentProject?.id}
-            tutorialId={currentTutorial?.id}
+            projectId={currentProject?.id} 
+            tutorialId={currentTutorial?.id} 
             autoCapture={autoCapture}
             autoCaptureEnter={autoCaptureEnter}
           />
-        </div>
-        <div style={{ display: activeTab === 'EditSteps' ? 'block' : 'none' }} className={activeTab === 'EditSteps' ? 'h-full' : ''}>
-          <StepsTab tutorialId={currentTutorial?.id} />
-        </div>
-        <div style={{ display: activeTab === 'Export' ? 'block' : 'none' }} className={activeTab === 'Export' ? 'h-full' : ''}>
+        )}
+        {activeTab === 'EditSteps' && tabsState.EditSteps.visible && (
+          <StepsTab 
+            tutorialId={currentTutorial?.id}
+            realtimeSteps={realtimeSteps} // Pass realtime steps to StepsTab
+          />
+        )}
+        {activeTab === 'Export' && tabsState.Export.visible && (
           <ExportTab tutorialId={currentTutorial?.id} />
-        </div>
-        <div style={{ display: activeTab === 'Project' ? 'block' : 'none' }} className={activeTab === 'Project' ? 'h-full' : ''}>
-          {tabsState.Project.projectId ? (
-            <TutorialList 
-              projectId={tabsState.Project.projectId} 
-              onTutorialSelect={handleTutorialSelect}
-              onCreateTutorial={handleCreateTutorial}
-            />
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full p-8 text-gray-500">
-              <p>No project selected. Please select a project from the sidebar.</p>
-            </div>
-          )}
-        </div>
+        )}
+        {activeTab === 'Project' && tabsState.Project.visible && (
+          <TutorialList 
+            projectId={tabsState.Project.projectId || currentProject?.id || ''} 
+            onTutorialSelect={handleTutorialSelect}
+            onCreateTutorial={handleCreateTutorial}
+          />
+        )}
       </>
     );
   };

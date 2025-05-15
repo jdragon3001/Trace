@@ -59,11 +59,22 @@ try {
     deleteStep: (stepId: string) => ipcRenderer.invoke(IpcChannels.DELETE_STEP, stepId),
     reorderSteps: (steps: unknown[]) => ipcRenderer.invoke(IpcChannels.REORDER_STEPS, steps),
     
+    // Shape Management APIs
+    saveShapes: (stepId: string, imagePath: string, shapes: any[]) => 
+      ipcRenderer.invoke(IpcChannels.SAVE_SHAPES, stepId, imagePath, shapes),
+    getShapesByImage: (imagePath: string, stepId?: string) => 
+      ipcRenderer.invoke(IpcChannels.GET_SHAPES_BY_IMAGE, imagePath, stepId),
+    getShapesByStep: (stepId: string) => 
+      ipcRenderer.invoke(IpcChannels.GET_SHAPES_BY_STEP, stepId),
+    
     // State Management APIs
     getCurrentProject: () => ipcRenderer.invoke(IpcChannels.GET_CURRENT_PROJECT),
     getCurrentTutorial: () => ipcRenderer.invoke(IpcChannels.GET_CURRENT_TUTORIAL),
     setCurrentProject: (projectId: string) => ipcRenderer.invoke(IpcChannels.SET_CURRENT_PROJECT, projectId),
     setCurrentTutorial: (tutorialId: string) => ipcRenderer.invoke(IpcChannels.SET_CURRENT_TUTORIAL, tutorialId),
+    
+    // Step notification
+    notifyStepRecorded: (step: RecordingStep) => ipcRenderer.send(IpcChannels.STEP_RECORDED_NOTIFICATION, step),
     
     // Recording Settings
     updateRecordingSettings: (settings: { autoCapture: boolean, autoCaptureEnter: boolean }) => 
@@ -74,7 +85,7 @@ try {
       ipcRenderer.invoke(IpcChannels.EXPORT_PROJECT, format, steps, filePath),
     exportTutorial: (tutorialId: string, options: unknown) => 
       ipcRenderer.invoke(IpcChannels.EXPORT_TUTORIAL, tutorialId, options),
-    exportPrepareShapes: (tutorialId: string, shapeData: Record<string, Array<any>>) =>
+    prepareShapesForExport: (tutorialId: string, shapeData: Record<string, Array<any>>) =>
       ipcRenderer.invoke(IpcChannels.EXPORT_PREPARE_SHAPES, tutorialId, shapeData),
     loadImageAsDataUrl: (imagePath: string): Promise<string> => 
       ipcRenderer.invoke(IpcChannels.LOAD_IMAGE_AS_DATA_URL, imagePath),
@@ -97,7 +108,15 @@ try {
     saveDataUrlToTempFile: (options: {
       dataUrl: string;
       fileType: string;
-    }) => ipcRenderer.invoke(IpcChannels.SAVE_DATA_URL_TO_TEMP_FILE, options)
+    }) => ipcRenderer.invoke(IpcChannels.SAVE_DATA_URL_TO_TEMP_FILE, options),
+    
+    // Assets API
+    getAssetsByTutorial: (tutorialId: string) => 
+      ipcRenderer.invoke(IpcChannels.GET_ASSETS_BY_TUTORIAL, tutorialId),
+      
+    // Load shapes from JSON files
+    loadShapesFromJson: (imagePath: string): Promise<any[]> =>
+      ipcRenderer.invoke(IpcChannels.LOAD_SHAPES_FROM_JSON, imagePath),
   });
   console.log('[Preload] window.electronAPI exposed successfully.');
 } catch (error) {

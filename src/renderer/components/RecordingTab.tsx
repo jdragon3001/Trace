@@ -154,7 +154,24 @@ export const RecordingTab: React.FC<RecordingTabProps> = ({ projectId, tutorialI
         // Only save the step if we have the correct current tutorial ID
         if (currentTutorialId && currentTutorialId === tutorialId) {
             console.log(`[RecordingTab] Saving step to database for tutorial ${currentTutorialId}`);
-            saveStepToDatabase(step, currentTutorialId);
+            saveStepToDatabase(step, currentTutorialId)
+                .then(() => {
+                    // Force update the recording state to include the new step
+                    setRecordingState(prev => ({
+                        ...prev,
+                        currentStep: prev.currentStep + 1,
+                        steps: [...prev.steps, step]
+                    }));
+                    
+                    // Trigger a notification for the UI that a step was recorded
+                    if (window.electronAPI?.notifyStepRecorded) {
+                        window.electronAPI.notifyStepRecorded(step);
+                    }
+                })
+                .catch(err => {
+                    console.error('[RecordingTab] Error saving step:', err);
+                });
+                
             // Mark step as processed
             seenSteps.set(step.id, true);
         } else {
@@ -200,17 +217,20 @@ export const RecordingTab: React.FC<RecordingTabProps> = ({ projectId, tutorialI
             windowTitle: step.windowTitle || '',
             keyboardShortcut: step.keyboardShortcut || ''
         };
-
-        // Save step to database
-        const savedStep = await window.electronAPI.saveStep(dbStep);
         
-        if (savedStep) {
-            console.log(`[RecordingTab] Successfully saved step to database with ID: ${savedStep.id}`);
-        } else {
-            console.error('[RecordingTab] Failed to save step to database - no response');
+        // Save to database via IPC
+        await window.electronAPI?.saveStep(dbStep);
+        
+        // Refresh the steps for the current tutorial to ensure UI consistency
+        if (window.electronAPI?.getStepsByTutorial) {
+            const updatedSteps = await window.electronAPI.getStepsByTutorial(tutorialId);
+            console.log(`[RecordingTab] Refreshed steps after save, now have ${updatedSteps?.length || 0} steps`);
         }
+        
+        return dbStep;
     } catch (error) {
-        console.error('[RecordingTab] Error saving step to database:', error);
+        console.error(`[RecordingTab] Error saving step to database:`, error);
+        throw error;
     }
   };
 

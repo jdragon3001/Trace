@@ -69,4 +69,14 @@ export interface Asset {
   tutorialId: string;
   type: string;
   path: string;
+}
+
+export interface ShapeData {
+  id?: string;
+  stepId: string;
+  imagePath: string;
+  type: 'ellipse' | 'arrow' | 'line' | 'rectangle';
+  start: { x: number, y: number };
+  end: { x: number, y: number };
+  color: string;
 } 

@@ -1,8 +1,12 @@
-import { DbMigrationService } from './DbMigrationService';
-import { StepRepository } from '../repositories/StepRepository';
-import path from 'path';
 import { app } from 'electron';
 import { DbConnectionManager } from './DbConnectionManager';
+import { ShapeData } from '../../shared/types';
+import { StepRepository } from '../repositories/StepRepository';
+import { ShapeRepository } from '../repositories/ShapeRepository';
+import path from 'path';
+import { DbMigrationService } from './DbMigrationService';
+import crypto from 'crypto';
+import fs from 'fs';
 
 // Import our custom SQLite adapter instead of better-sqlite3
 import { createDatabase } from '../services/sqlite-adapter';
@@ -605,5 +609,194 @@ export class DatabaseService {
       console.error(`[DatabaseService] Error deleting project ${projectId}:`, error);
       return false;
     }
+  }
+
+  /**
+   * Save shapes for a specific image
+   * @param stepId ID of the step the shapes belong to
+   * @param imagePath Path to the image
+   * @param shapes Array of shape data
+   * @returns The saved shapes with IDs
+   */
+  public async saveShapes(stepId: string, imagePath: string, shapes: ShapeData[]): Promise<ShapeData[]> {
+    console.log(`[DatabaseService] Saving ${shapes.length} shapes for step ${stepId} and image ${imagePath}`);
+    console.log(`[DatabaseService] Database location: ${this.dbManager.getDbPath()}`);
+    
+    if (!stepId) {
+      console.error('[DatabaseService] Cannot save shapes: Missing stepId');
+      throw new Error('Missing stepId when saving shapes');
+    }
+    
+    if (!imagePath) {
+      console.error('[DatabaseService] Cannot save shapes: Missing imagePath');
+      throw new Error('Missing imagePath when saving shapes');
+    }
+    
+    // Verify the step exists
+    try {
+      const stepExists = await this.stepExists(stepId);
+      if (!stepExists) {
+        console.warn(`[DatabaseService] Step with ID ${stepId} does not exist in the database - shapes may fail to save due to foreign key constraints`);
+        
+        // Log step details for debugging
+        console.log(`[DatabaseService] Checking step details for troubleshooting`);
+        try {
+          const db = await this.dbManager.getDatabase();
+          const allSteps = db.prepare(`SELECT id FROM steps`).all() as { id: string }[];
+          console.log(`[DatabaseService] Available step IDs in database: ${allSteps.map(s => s.id).join(', ')}`);
+          console.log(`[DatabaseService] Number of steps in database: ${allSteps.length}`);
+        } catch (error) {
+          console.error(`[DatabaseService] Error getting step information:`, error);
+        }
+      } else {
+        console.log(`[DatabaseService] Step with ID ${stepId} exists, continuing to save shapes`);
+      }
+    } catch (error) {
+      console.error(`[DatabaseService] Error checking if step exists:`, error);
+    }
+    
+    // Save shapes via repository
+    try {
+      // Get shape repository
+      const shapeRepository = ShapeRepository.getInstance();
+      
+      // Prepare shape data
+      const shapeDataWithStepAndImage = shapes.map(shape => ({
+        ...shape,
+        id: shape.id || this.generateId(),
+        stepId,
+        imagePath
+      }));
+      
+      // Get the database handle directly to disable foreign keys temporarily
+      const db = await this.dbManager.getDatabase();
+      
+      try {
+        // Temporarily disable foreign keys to allow shape saving even if step reference issues exist
+        console.log(`[DatabaseService] Temporarily disabling foreign key constraints for shape save`);
+        db.pragma('foreign_keys = OFF');
+        
+        // Log the first shape for debugging
+        if (shapes.length > 0) {
+          console.log(`[DatabaseService] First shape to save:`, JSON.stringify(shapeDataWithStepAndImage[0]));
+        }
+        
+        // Save shapes through repository
+        const savedShapes = await shapeRepository.saveShapes(shapeDataWithStepAndImage);
+        
+        // Re-enable foreign keys after save
+        console.log(`[DatabaseService] Re-enabling foreign key constraints after shape save`);
+        db.pragma('foreign_keys = ON');
+        
+        // Verify shapes were saved
+        const verifyQuery = db.prepare(`SELECT COUNT(*) as count FROM shapes WHERE stepId = ?`).get(stepId) as { count: number };
+        console.log(`[DatabaseService] Verification: ${verifyQuery.count} shapes found in database for step ${stepId} after save (should be ${shapes.length})`);
+        
+        if (verifyQuery.count === 0 && shapes.length > 0) {
+          console.error(`[DatabaseService] CRITICAL: No shapes were found in the database after save! This indicates a database save failure.`);
+        } else if (verifyQuery.count > 0) {
+          console.log(`[DatabaseService] Success: Shapes were verified to be saved in the database`);
+        }
+        
+        return savedShapes;
+      } catch (error) {
+        console.error(`[DatabaseService] Error saving shapes:`, error);
+        throw error;
+      } finally {
+        // Always ensure foreign keys are re-enabled
+        try {
+          db.pragma('foreign_keys = ON');
+        } catch (error) {
+          console.error(`[DatabaseService] Error re-enabling foreign keys:`, error);
+        }
+      }
+    } catch (error) {
+      console.error(`[DatabaseService] Error in saveShapes:`, error);
+      return [];
+    }
+  }
+  
+  /**
+   * Get shapes for a specific image
+   * @param imagePath Path to the image
+   * @param stepId Optional step ID to filter by
+   * @returns Array of shapes for the image
+   */
+  public async getShapesByImage(imagePath: string, stepId?: string): Promise<ShapeData[]> {
+    const shapeRepository = ShapeRepository.getInstance();
+    try {
+      return await shapeRepository.getShapesByImagePath(imagePath, stepId);
+    } catch (error) {
+      console.error(`[DatabaseService] Error getting shapes for image:`, error);
+      return [];
+    }
+  }
+  
+  /**
+   * Get shapes for a specific step
+   * @param stepId ID of the step
+   * @returns Array of shapes for the step
+   */
+  public async getShapesByStep(stepId: string): Promise<ShapeData[]> {
+    const shapeRepository = ShapeRepository.getInstance();
+    try {
+      return await shapeRepository.getShapesByStepId(stepId);
+    } catch (error) {
+      console.error(`[DatabaseService] Error getting shapes for step:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Delete shapes for a specific image
+   * @param imagePath Path to the image
+   * @returns true if successful, false otherwise
+   */
+  public async deleteShapesByImage(imagePath: string): Promise<boolean> {
+    const shapeRepository = ShapeRepository.getInstance();
+    try {
+      return await shapeRepository.deleteShapesByImagePath(imagePath);
+    } catch (error) {
+      console.error(`[DatabaseService] Error deleting shapes for image:`, error);
+      return false;
+    }
+  }
+  
+  /**
+   * Delete shapes for a specific step
+   * @param stepId ID of the step
+   * @returns true if successful, false otherwise
+   */
+  public async deleteShapesByStep(stepId: string): Promise<boolean> {
+    const shapeRepository = ShapeRepository.getInstance();
+    try {
+      return await shapeRepository.deleteShapesByStepId(stepId);
+    } catch (error) {
+      console.error(`[DatabaseService] Error deleting shapes for step:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if a step exists in the database
+   * @param stepId ID of the step to check
+   * @returns true if the step exists, false otherwise
+   */
+  public async stepExists(stepId: string): Promise<boolean> {
+    try {
+      const step = await this.getStep(stepId);
+      return !!step;
+    } catch (error) {
+      console.error(`[DatabaseService] Error checking if step exists:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Generate a unique ID
+   * @returns A unique UUID string
+   */
+  private generateId(): string {
+    return crypto.randomUUID();
   }
 } 

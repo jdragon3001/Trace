@@ -11,6 +11,11 @@ export class ImageService {
 
   constructor(private tempDir: string) {}
 
+  /**
+   * Draw a circle directly on the image
+   * Note: This still uses the old method for backward compatibility
+   * Consider using saveClickMarkerData for new code which makes markers editable
+   */
   public async drawCircle(
     imagePath: string,
     position: MousePosition,
@@ -46,9 +51,68 @@ export class ImageService {
 
       // Write the modified buffer back to the original file path
       await fs.promises.writeFile(imagePath, modifiedImageBuffer);
+      
+      // Also save the click marker data for use with markup tool
+      await this.saveClickMarkerData(imagePath, position, stepNumber);
     } catch (error) {
       console.error('Failed to draw circle:', error);
       throw new Error('Failed to draw circle on image');
+    }
+  }
+
+  /**
+   * Save click marker data associated with an image for use with the markup tool
+   * This allows click markers to be edited with the markup tool
+   */
+  public async saveClickMarkerData(
+    imagePath: string,
+    position: MousePosition,
+    stepNumber: number
+  ): Promise<void> {
+    try {
+      const radius = this.CIRCLE_SIZE / 2;
+      const metadata = await sharp(await fs.promises.readFile(imagePath)).metadata();
+      
+      if (!metadata.width || !metadata.height) {
+        throw new Error('Invalid image metadata');
+      }
+      
+      // Create a shape in format compatible with markup tool
+      const shape = {
+        id: `click_marker_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+        type: 'ellipse',
+        start: position, // Center position
+        end: { 
+          x: position.x + radius, 
+          y: position.y + radius 
+        },
+        color: `rgba(${this.CIRCLE_COLOR.r}, ${this.CIRCLE_COLOR.g}, ${this.CIRCLE_COLOR.b}, ${this.CIRCLE_COLOR.alpha})`,
+        stepNumber: stepNumber // Add step number as metadata
+      };
+      
+      // Create data filename by appending .shapes.json to image path
+      const dataFilePath = `${imagePath}.shapes.json`;
+      
+      // Save shapes data to file
+      let shapes = [];
+      if (fs.existsSync(dataFilePath)) {
+        // If file exists, read existing shapes
+        try {
+          const existingData = await fs.promises.readFile(dataFilePath, 'utf8');
+          shapes = JSON.parse(existingData);
+        } catch (parseError) {
+          console.error('Failed to parse existing shapes data:', parseError);
+          // Continue with empty shapes array if parsing failed
+        }
+      }
+      
+      // Add the new shape and write back to file
+      shapes.push(shape);
+      await fs.promises.writeFile(dataFilePath, JSON.stringify(shapes, null, 2));
+      console.log(`Click marker data saved to ${dataFilePath}`);
+    } catch (error) {
+      console.error('Failed to save click marker data:', error);
+      throw new Error('Failed to save click marker data');
     }
   }
 
@@ -76,6 +140,24 @@ export class ImageService {
         >${stepNumber}</text>
       </svg>
     `;
+  }
+  
+  /**
+   * Draw an editable click marker instead of embedding it in the image
+   * This creates a circle that can be edited with the markup tool
+   */
+  public async createEditableClickMarker(
+    imagePath: string,
+    position: MousePosition,
+    stepNumber: number
+  ): Promise<void> {
+    try {
+      // Save the click marker data without modifying the image
+      await this.saveClickMarkerData(imagePath, position, stepNumber);
+    } catch (error) {
+      console.error('Failed to create editable click marker:', error);
+      throw new Error('Failed to create editable click marker');
+    }
   }
 
   /**

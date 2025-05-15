@@ -184,57 +184,43 @@ export class RecordingService extends EventEmitter {
     }
 
     private registerIpcHandlers(): void {
-        ipcMain.handle(IpcChannels.START_RECORDING, () => {
-            try {
-                console.log('[RecordingService] IPC START_RECORDING received');
-                this.startRecording();
-                return { success: true };
-            } catch (error) {
-                console.error('[RecordingService] Error in START_RECORDING handler:', error);
-                return { success: false, error: `${error}` };
-            }
+        console.log('[RecordingService] Setting up IPC handlers...');
+        
+        // Start recording command
+        ipcMain.handle(IpcChannels.START_RECORDING, async (): Promise<void> => {
+            return this.startRecording();
         });
         
-        ipcMain.handle(IpcChannels.STOP_RECORDING, () => {
-            try {
-                this.stopRecording();
-                return { success: true };
-            } catch (error) {
-                console.error('[RecordingService] Error in STOP_RECORDING handler:', error);
-                return { success: false, error: `${error}` };
-            }
+        // Stop recording command
+        ipcMain.handle(IpcChannels.STOP_RECORDING, async (): Promise<void> => {
+            return this.stopRecording();
         });
         
-        ipcMain.handle(IpcChannels.PAUSE_RECORDING, () => {
-            try {
-                this.pauseRecording();
-                return { success: true };
-            } catch (error) {
-                console.error('[RecordingService] Error in PAUSE_RECORDING handler:', error);
-                return { success: false, error: `${error}` };
-            }
+        // Pause recording command
+        ipcMain.handle(IpcChannels.PAUSE_RECORDING, async (): Promise<void> => {
+            return this.pauseRecording();
         });
         
-        ipcMain.handle(IpcChannels.RESUME_RECORDING, () => {
-            try {
-                this.resumeRecording();
-                return { success: true };
-            } catch (error) {
-                console.error('[RecordingService] Error in RESUME_RECORDING handler:', error);
-                return { success: false, error: `${error}` };
-            }
+        // Resume recording command
+        ipcMain.handle(IpcChannels.RESUME_RECORDING, async (): Promise<void> => {
+            return this.resumeRecording();
         });
-
-        ipcMain.handle(IpcChannels.UPDATE_RECORDING_SETTINGS, (_event, settings: { autoCapture: boolean, autoCaptureEnter: boolean }) => {
-            try {
-                console.log('[RecordingService] Updating recording settings:', settings);
-                this.autoCapture = settings.autoCapture;
-                this.autoCaptureEnter = settings.autoCaptureEnter;
-                return { success: true };
-            } catch (error) {
-                console.error('[RecordingService] Error updating recording settings:', error);
-                return { success: false, error: `${error}` };
-            }
+        
+        // Update recording settings
+        ipcMain.handle(IpcChannels.UPDATE_RECORDING_SETTINGS, (_event, settings: { 
+            autoCapture: boolean, 
+            autoCaptureEnter: boolean 
+        }) => {
+            console.log(`[RecordingService] Updating recording settings: autoCapture=${settings.autoCapture}, autoCaptureEnter=${settings.autoCaptureEnter}`);
+            this.autoCapture = settings.autoCapture;
+            this.autoCaptureEnter = settings.autoCaptureEnter;
+            return { success: true };
+        });
+        
+        // Listen for step recorded notifications from the renderer to broadcast to other renderer processes
+        ipcMain.on(IpcChannels.STEP_RECORDED_NOTIFICATION, (_event, step: RecordingStep) => {
+            console.log(`[RecordingService] Received step recorded notification, rebroadcasting to all windows`);
+            this.sendToRenderer(IpcChannels.STEP_CREATED, step);
         });
 
         ipcMain.handle(IpcChannels.GET_MEDIA_ACCESS_STATUS, async (_event, mediaType: string) => {
@@ -341,11 +327,12 @@ export class RecordingService extends EventEmitter {
             try {
                 // Use the captured step number for drawing
                 if (data) {
-                    await this.imageService.drawCircle(screenshotPath, data, currentStepNumber);
-                    console.log(`Circle drawn on screenshot for step ${currentStepNumber}: ${screenshotPath}`);
+                    // Use the new editable click marker instead of embedding in the image
+                    await this.imageService.createEditableClickMarker(screenshotPath, data, currentStepNumber);
+                    console.log(`Editable click marker created for step ${currentStepNumber}: ${screenshotPath}`);
                 }
             } catch (drawError) {
-                console.error(`[RecordingService] Failed to draw circle on ${screenshotPath} for step ${currentStepNumber}:`, drawError);
+                console.error(`[RecordingService] Failed to create click marker on ${screenshotPath} for step ${currentStepNumber}:`, drawError);
             }
 
             const newStep: RecordingStep = {

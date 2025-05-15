@@ -13,6 +13,7 @@ export const IpcChannels = {
   STEP_CREATED: 'step:created' as const,
   STEP_UPDATED: 'step:updated' as const,
   STEP_DELETED: 'step:deleted' as const,
+  STEP_RECORDED_NOTIFICATION: 'step:recorded-notification' as const,
   
   // Project Management
   SAVE_PROJECT: 'project:save' as const,
@@ -40,6 +41,11 @@ export const IpcChannels = {
   DELETE_STEP: 'step:delete' as const,
   REORDER_STEPS: 'step:reorder' as const,
   
+  // Shape Management
+  SAVE_SHAPES: 'shape:save' as const,
+  GET_SHAPES_BY_IMAGE: 'shape:get-by-image' as const,
+  GET_SHAPES_BY_STEP: 'shape:get-by-step' as const,
+  
   // State Management
   GET_CURRENT_PROJECT: 'project:get-current' as const,
   SET_CURRENT_PROJECT: 'project:set-current' as const,
@@ -66,6 +72,12 @@ export const IpcChannels = {
   COPY_IMAGE_FILE: 'file:copy-image' as const,
   LOAD_IMAGE_AS_DATA_URL: 'file:load-image-as-data-url' as const,
   SAVE_DATA_URL_TO_TEMP_FILE: 'file:save-data-url-to-temp' as const,
+  
+  // Assets
+  GET_ASSETS_BY_TUTORIAL: 'assets:get-by-tutorial' as const,
+  
+  // Shapes from files
+  LOAD_SHAPES_FROM_JSON: 'shapes:load-from-json' as const,
 } as const;
 
 // Re-export for type safety

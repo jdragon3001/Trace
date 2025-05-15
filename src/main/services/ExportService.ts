@@ -5,7 +5,7 @@ import { Step, Tutorial } from '../../shared/types';
 import { ImageService } from './ImageService';
 import PDFDocument from 'pdfkit';
 import * as docx from 'docx';
-import { Document, Packer, Paragraph, TextRun, ImageRun, HeadingLevel, AlignmentType, SectionType } from 'docx';
+import { Document, Packer, Paragraph, TextRun, ImageRun, HeadingLevel, AlignmentType, SectionType, PageNumber, ShadingType, BorderStyle, PageBreak } from 'docx';
 import { IpcChannels } from '../../shared/constants';
 
 // Standard 14 PDF Fonts (Standard font families that don't require embedding)
@@ -56,6 +56,24 @@ export class ExportService {
     // Register IPC handler to receive shape data from renderer
     ipcMain.handle(IpcChannels.EXPORT_PREPARE_SHAPES, (_event, tutorialId: string, shapeDataFromRenderer: Record<string, Array<any>>) => {
       console.log(`[ExportService] Received shape data for tutorial ${tutorialId}`);
+      
+      if (!shapeDataFromRenderer || typeof shapeDataFromRenderer !== 'object') {
+        console.error('[ExportService] Invalid shape data received from renderer', shapeDataFromRenderer);
+        return false;
+      }
+      
+      const shapeKeys = Object.keys(shapeDataFromRenderer);
+      console.log(`[ExportService] Received ${shapeKeys.length} shape entries`);
+      
+      // Log a few sample entries
+      if (shapeKeys.length > 0) {
+        const sampleKeys = shapeKeys.slice(0, 3);
+        sampleKeys.forEach(key => {
+          const shapes = shapeDataFromRenderer[key];
+          console.log(`[ExportService] Key "${key}" has ${shapes.length} shapes`);
+        });
+      }
+      
       this.shapeData = shapeDataFromRenderer;
       return true;
     });
@@ -68,8 +86,32 @@ export class ExportService {
    */
   private async applyShapesToImage(imagePath: string): Promise<string> {
     try {
+      // Ensure we have shape data to work with
+      if (!this.shapeData || typeof this.shapeData !== 'object') {
+        console.log(`[ExportService] No shape data is available for any images`);
+        return imagePath;
+      }
+
       // Check if we have shape data for this image
-      const shapes = this.shapeData[imagePath];
+      // First try direct path lookup
+      let shapes = this.shapeData[imagePath];
+      
+      // If no shapes found by direct path, try checking for step ID + path pattern
+      if (!shapes || shapes.length === 0) {
+        // Look for entries with format "stepId:imagePath"
+        const matchingKeys = Object.keys(this.shapeData).filter(key => {
+          return key.includes(`:${imagePath}`) || key.endsWith(imagePath);
+        });
+        
+        if (matchingKeys.length > 0) {
+          console.log(`[ExportService] Found shapes using pattern match for: ${imagePath}`);
+          console.log(`[ExportService] Matched keys: ${matchingKeys.join(', ')}`);
+          
+          // Use the first matching key's shapes
+          shapes = this.shapeData[matchingKeys[0]];
+        }
+      }
+      
       if (!shapes || shapes.length === 0) {
         console.log(`[ExportService] No shapes to apply for image: ${imagePath}`);
         return imagePath;
@@ -399,121 +441,302 @@ export class ExportService {
     options: ExportOptions
   ): Promise<void> {
     try {
-      // Document sections
-      const docElements: docx.ISectionOptions[] = [];
-      
-      // Create content elements
-      const children: docx.Paragraph[] = [];
-      
-      // Add title
-      children.push(
+      const primaryColor = "2c5282"; // Blue
+      const accentColor = "4299e1"; // Lighter Blue
+      const textColor = "333333";   // Dark Gray
+      const lightGrayColor = "e2e8f0";
+      const whiteColor = "FFFFFF";
+      const stepNumberColor = "2c5282";
+
+      const sections: docx.ISectionOptions[] = [];
+      const titlePageChildren: Paragraph[] = [];
+
+      // ---- START TITLE PAGE ----
+
+      // Decorative Header Bar (using a paragraph with shading)
+      titlePageChildren.push(new Paragraph({
+        children: [new TextRun("\t")], // Needs some content
+        shading: {
+          type: ShadingType.SOLID,
+          color: primaryColor,
+          fill: primaryColor,
+        },
+        spacing: { before: 0, after: 0 },
+        // Approximate height of 100 PDF units by font size and spacing
+        // This is tricky in DOCX, often best done with a table or image
+      }));
+      // To make the header bar appear taller, we can add empty paragraphs or adjust spacing.
+      // For simplicity, we'll rely on the single shaded paragraph. A more robust way
+      // would be a 1x1 table with cell shading and fixed height.
+
+      // Spacing after header bar
+      titlePageChildren.push(new Paragraph({ spacing: { before: 200 * 6 } })); // Approx 60pt (PDF had moveDown(3))
+
+      // Decorative element above title (short line)
+       titlePageChildren.push(new Paragraph({
+        children: [new TextRun({ text: "" })], // Empty run for border
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 200, after: 100 },
+        border: {
+            top: { style: BorderStyle.SINGLE, size: 18, color: accentColor }, // size is in 1/8th of a point
+        },
+        // To make it appear like a short line, this is not ideal.
+        // A shape or a very short table would be better.
+        // For now, a full width border.
+      }));
+
+
+      // Tutorial Title
+      titlePageChildren.push(
         new Paragraph({
-          text: options.docTitle || tutorial.title,
-          heading: HeadingLevel.TITLE,
+          children: [
+            new TextRun({
+              text: options.docTitle || tutorial.title,
+              size: 32 * 2, // PDF: 32pt
+              bold: true,
+              color: primaryColor,
+              font: "Helvetica",
+            }),
+          ],
           alignment: AlignmentType.CENTER,
-          spacing: { after: 400, before: 400 },
+          spacing: { after: 200 }, // Approx 10pt
         })
       );
       
-      // Add description if available
+      // Decorative line under title
+      titlePageChildren.push(new Paragraph({
+        children: [new TextRun("")],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 200 * 3 }, // Approx 30pt
+        border: {
+            bottom: { style: BorderStyle.SINGLE, size: 12, color: accentColor },
+        }
+      }));
+
+
+      // Generated Date
+      const currentDate = new Date().toLocaleDateString();
+      titlePageChildren.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: `Generated on ${currentDate}`,
+              size: 12 * 2, // PDF: 12pt
+              color: textColor,
+              font: "Helvetica",
+            }),
+          ],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 200 * 2 }, // Approx 20pt
+        })
+      );
+
+      // Tutorial Description
       if (tutorial.description) {
-        children.push(
-          new Paragraph({
-            text: tutorial.description,
+        titlePageChildren.push(
+          new Paragraph({ // Container for border/shading
+            children: [
+              new TextRun({
+                text: tutorial.description,
+                size: 12 * 2, // PDF: 12pt
+                italics: true,
+                color: "505050",
+                font: "Helvetica",
+              }),
+            ],
             alignment: AlignmentType.CENTER,
-            spacing: { after: 600 },
+            spacing: { before: 200, after: 200, line: 240 * 1.5 }, // Spacing for the box, line for approximate height
+            shading: { // Simulates the background box
+              type: ShadingType.SOLID,
+              color: whiteColor, // White background
+              fill: whiteColor,
+            },
+             border: { // Border for the box
+                top: { style: BorderStyle.SINGLE, size: 4, color: lightGrayColor },
+                bottom: { style: BorderStyle.SINGLE, size: 4, color: lightGrayColor },
+                left: { style: BorderStyle.SINGLE, size: 4, color: lightGrayColor },
+                right: { style: BorderStyle.SINGLE, size: 4, color: lightGrayColor },
+            },
+            indent: { left: 720, right: 720 } // Approx 1 inch margins for the box
           })
         );
       }
       
-      // Sort steps by order
+      // Add a page break after the title page content to ensure footer is on this page
+      titlePageChildren.push(new Paragraph({ children: [new PageBreak()] }));
+
+
+      sections.push({
+        properties: {
+          type: SectionType.NEXT_PAGE, // Starts title page on its own page
+        },
+        headers: { default: new docx.Header({ children: [] }) }, // Empty header, must have children array
+        footers: {
+          default: new docx.Footer({
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({ text: "Tutorial Documentation", size: 10 * 2, color: "666666", font: "Helvetica" }),
+                ],
+                alignment: AlignmentType.CENTER,
+              }),
+            ],
+          }),
+        },
+        children: titlePageChildren,
+      });
+      // ---- END TITLE PAGE ----
+
+
+      // ---- START STEPS SECTION ----
+      const stepPageChildren: Paragraph[] = [];
       const sortedSteps = [...steps].sort((a, b) => a.order - b.order);
-      
-      // Add steps - one per page for better readability
+
       for (let i = 0; i < sortedSteps.length; i++) {
         const step = sortedSteps[i];
-        
-        // Add page break between steps (except before the first step)
-        if (i > 0) {
-          children.push(
+
+        if (i > 0) { // Page break before each step (except the first actual step)
+          stepPageChildren.push(new Paragraph({ children: [new PageBreak()] }));
+        }
+
+        const parseActionText = (text: string) => {
+          if (!text) return { title: text, description: '' };
+          const titleMatch = text.match(/^\[TITLE\](.*?)(\[DESC\]|$)/s);
+          if (titleMatch && titleMatch[1].trim()) {
+            const title = titleMatch[1].trim();
+            const descMatch = text.match(/\[DESC\](.*?)$/s);
+            const description = descMatch && descMatch[1].trim() ? descMatch[1].trim() : '';
+            return { title, description };
+          }
+          return { title: text, description: '' };
+        };
+
+        const { title: stepTitle, description: stepDescription } = parseActionText(step.actionText);
+
+        // Step Header
+        const stepHeaderRuns: TextRun[] = [];
+        if (options.includeStepNumbers) {
+          stepHeaderRuns.push(new TextRun({
+            text: `Step ${i + 1}: `,
+            size: 16 * 2, // PDF: 16pt
+            bold: true,
+            color: stepNumberColor,
+            font: "Helvetica",
+          }));
+        }
+        stepHeaderRuns.push(new TextRun({
+          text: stepTitle,
+          size: 16 * 2, // PDF: 16pt
+          bold: false, // Title part is not bold in PDF (Helvetica regular)
+          color: textColor,
+          font: "Helvetica",
+        }));
+        stepPageChildren.push(new Paragraph({ children: stepHeaderRuns, spacing: { after: 200 } }));
+
+
+        // Screenshot
+        if (options.includeScreenshots && step.screenshotPath && fs.existsSync(step.screenshotPath)) {
+          try {
+            const imageBase64 = await ImageService.imagePathToDataUrl(step.screenshotPath);
+            if (imageBase64) {
+              const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+              const imageBuffer = Buffer.from(base64Data, 'base64');
+              stepPageChildren.push(
+                new Paragraph({
+                  children: [
+                    new ImageRun({
+                      data: imageBuffer,
+                      transformation: { // PDF uses fit [500, 200]
+                        width: 500, 
+                        height: 200, // Aspect ratio might be skewed, docx handles this by max width/height
+                      },
+                    }),
+                  ],
+                  alignment: AlignmentType.CENTER,
+                  spacing: { after: 300 }, // Approx 15pt (PDF: moveDown(1.5))
+                })
+              );
+            }
+          } catch (imgError) {
+            console.error(`Error adding image for step ${i + 1}:`, imgError);
+            stepPageChildren.push(new Paragraph({ text: "[Error: Screenshot could not be loaded]", alignment: AlignmentType.CENTER, spacing: { after: 200 }}));
+          }
+        } else {
+             stepPageChildren.push(new Paragraph({ text: "", spacing: { after: 300 } })); // Add spacing even if no image
+        }
+
+
+        // Description
+        if (stepDescription) {
+          stepPageChildren.push(new Paragraph({ spacing: { after: 100 } })); // Space before "Description:"
+          stepPageChildren.push(
             new Paragraph({
-              text: "",
-              pageBreakBefore: true,
+              children: [
+                new TextRun({ text: "Description:", size: 12 * 2, bold: false, color: "555555", font: "Helvetica", underline: { type: docx.UnderlineType.SINGLE, color: "555555"} }),
+                new TextRun({ text: " (Step details)", size: 11 * 2, bold: false, color: "555555", font: "Helvetica" }),
+              ],
+              spacing: { after: 100 }
+            })
+          );
+          stepPageChildren.push(
+            new Paragraph({
+              children: [new TextRun({ text: stepDescription, size: 11 * 2, color: textColor, font: "Helvetica" })],
+              spacing: { after: 200 }, // paragraphGap: 5 in PDF is approx 10pt
             })
           );
         }
         
-        // Step title with number (if enabled)
-        const stepText = options.includeStepNumbers 
-          ? `Step ${i + 1}: ${step.actionText}` 
-          : step.actionText;
-          
-        children.push(
-          new Paragraph({
-            text: stepText,
-            heading: HeadingLevel.HEADING_2,
-            spacing: { after: 300, before: 200 },
-          })
-        );
-        
-        // Add screenshot if option is enabled
-        if (options.includeScreenshots && step.screenshotPath) {
-          try {
-            // Check if file exists
-            if (fs.existsSync(step.screenshotPath)) {
-              // Convert image to base64 for docx processing
-              const imageBase64 = await ImageService.imagePathToDataUrl(step.screenshotPath);
-              
-              if (imageBase64) {
-                // Extract base64 data without header
-                const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-                const imageBuffer = Buffer.from(base64Data, 'base64');
-                
-                // Add image paragraph with centered alignment
-                // Use smaller dimensions for better readability
-                children.push(
-                  new Paragraph({
-                    children: [
-                      new ImageRun({
-                        data: imageBuffer,
-                        transformation: {
-                          width: 450,
-                          height: 250,
-                        },
-                      }),
-                    ],
-                    alignment: AlignmentType.CENTER,
-                    spacing: { after: 400 },
-                  })
-                );
-              }
+        // Separator line after each step
+        stepPageChildren.push(new Paragraph({
+            children: [], // No text needed, just border
+            spacing: { before: 300, after: 100 }, // PDF: moveDown(1.5) before, moveDown(0.5) after
+            border: {
+                bottom: { color: lightGrayColor, style: BorderStyle.SINGLE, size: 4 } // size is 0.5pt (4/8)
             }
-          } catch (imgError) {
-            console.error(`Error adding image for step ${i + 1}:`, imgError);
-            
-            // Add error message instead
-            children.push(
-              new Paragraph({
-                text: "[Error: Screenshot could not be loaded]",
-                alignment: AlignmentType.CENTER,
-                spacing: { after: 300 },
-              })
-            );
-          }
-        }
+        }));
       }
-      
-      // Create the document
-      const doc = new Document({
-        sections: [{
-          properties: {
-            type: SectionType.CONTINUOUS,
-          },
-          children: children,
-        }],
+
+      sections.push({
+        properties: {}, // Default properties for subsequent pages
+        headers: { default: new docx.Header({ children: [] }) }, // Empty header, must have children array
+        footers: {
+          default: new docx.Footer({
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                children: [
+                  new TextRun({ text: "Page ", size: 9*2, color: "888888" }),
+                  new TextRun({ children: [PageNumber.CURRENT], size: 9*2, color: "888888" }),
+                  new TextRun({ text: " of ", size: 9*2, color: "888888" }),
+                  new TextRun({ children: [PageNumber.TOTAL_PAGES], size: 9*2, color: "888888" }),
+                ],
+              }),
+            ],
+          }),
+        },
+        children: stepPageChildren,
       });
-      
-      // Generate and save the document
+      // ---- END STEPS SECTION ----
+
+      const doc = new Document({
+        creator: "OpenScribe",
+        title: options.docTitle || tutorial.title,
+        description: tutorial.description || "Tutorial Documentation",
+        sections: sections,
+        styles: {
+          paragraphStyles: [
+            {
+              id: "defaultFooter",
+              name: "Default Footer Style",
+              basedOn: "Normal",
+              next: "Normal",
+              run: { size: 9*2, color: "888888", font: "Helvetica" },
+              paragraph: { alignment: AlignmentType.CENTER },
+            }
+          ]
+        }
+      });
+
       const buffer = await Packer.toBuffer(doc);
       fs.writeFileSync(filePath, buffer);
     } catch (error) {

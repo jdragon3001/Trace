@@ -102,7 +102,7 @@ export const TutorialList: React.FC<TutorialListProps> = ({
     <div className="p-6">
       <div className="mb-6">
         <div className="flex items-start">
-          <FolderIcon className="h-8 w-8 text-yellow-500 mr-3 flex-shrink-0 mt-1" />
+          <FolderIcon className="h-8 w-8 text-gray-500 mr-3 flex-shrink-0 mt-1" />
           <div className="flex-1">
             <h1 className="text-2xl font-bold text-gray-800">{project.name}</h1>
             {project.description && (
@@ -148,7 +148,7 @@ export const TutorialList: React.FC<TutorialListProps> = ({
               onClick={() => handleTutorialClick(tutorial.id)}
             >
               <div className="flex items-start mb-2">
-                <DocumentTextIcon className="h-6 w-6 text-blue-500 mr-2 flex-shrink-0" />
+                <DocumentTextIcon className="h-6 w-6 text-gray-500 mr-2 flex-shrink-0" />
                 <h3 className="text-lg font-medium text-gray-800 flex-1 truncate" title={tutorial.title}>
                   {tutorial.title}
                 </h3>

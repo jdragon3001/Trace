@@ -209,6 +209,22 @@ This file tracks persistent issues encountered during development that require f
         6) Added better error handling for image loading during export
         7) Enhanced error messages to provide users with actionable information
 
+*   **Date:** 2024-09-15
+    *   **Problem:** Steps not updating in real-time during recording
+    *   **Context:** 
+        1) When recording steps for a tutorial, the steps weren't visible in the Edit Steps tab until switching off the page and coming back
+        2) This created a poor user experience where users couldn't see their recording progress in real-time
+    *   **Difficulty:** Multiple UI state synchronization issues:
+        1) The RecordingTab was saving steps correctly but not updating the UI appropriately
+        2) The StepsTab component wasn't receiving notifications about newly created steps
+        3) No shared state mechanism between tabs to ensure consistent data
+    *   **Status:** Resolved - Implemented the following fixes:
+        1) Enhanced RecordingTab to update state immediately after saving steps and to notify other components
+        2) Added a step notification channel using IPC to broadcast step updates across the application
+        3) Improved StepsTab to listen for step updates in real-time
+        4) Added shared state in the App component to ensure consistent step data between tabs
+        5) Made the application properly refresh step displays without requiring tab switching
+
 ## 2025-05-05: SQLite Database Errors
 
 ### Issues Encountered:
@@ -376,6 +392,24 @@ Implemented. The new database system should resolve issues with step saving, tut
 ### Status: 
 Implemented. Recording toolbar is now visible on the right side of the screen when the recording tab is active, allowing users to control capture settings.
 
+## 2024-08-19
+    *   **Problem:** Markup shape positioning issues when moving shapes
+    *   **Context:** 
+        1) When selecting and moving markup shapes (rectangles, ellipses, arrows), they would snap incorrectly to the left of the mouse cursor position
+        2) This made precise positioning of markup elements difficult and frustrating for users
+    *   **Difficulty:** Coordinate calculation issues:
+        1) The code was incorrectly calculating the position during shape movement
+        2) Scaling factors between original image and canvas were not being applied consistently
+        3) The dragOffset calculation was not properly accounting for scaling
+        4) Different shape types were handled inconsistently, creating different behavior for rectangles vs. ellipses
+    *   **Status:** Resolved - Implemented the following fixes:
+        1) Simplified the handleMouseDown and handleTouchStart functions to use a consistent approach for all shape types
+        2) Standardized how dragOffset is calculated during initial selection
+        3) Fixed coordinate transformation between canvas (display) and original image coordinates
+        4) Updated the movement calculations in handleMouseMove and handleTouchMove to use proper scaling
+        5) Consolidated the movement code for different shape types (rectangle, ellipse, line, arrow) to ensure consistent behavior
+        6) Added proper conversions between canvas coordinates and original image coordinates
+
 ## 2024-09-03: Markup Shape Positioning Issues
 
 ### Issues Encountered:
@@ -496,6 +530,36 @@ Implemented. Users can now save markup annotations on their screenshots without 
 
 The new UI provides better visual hierarchy, clearer interactions, and a more professional appearance while maintaining all existing functionality. Users can more easily identify selected steps and available actions.
 
+## 2024-09-05: Markup Shape Resize Handle Fix
+
+### Issues Encountered:
+
+1. **Incorrect Shape Resize Behavior**:
+   - Symptoms: When resizing markup shapes (especially rectangles), the corner would snap to the cursor position instead of scaling the shape properly
+   - Impact: Users couldn't properly resize shapes as the resize operation was counter-intuitive
+   - Root Cause: The code wasn't properly converting between canvas (display) coordinates and original image coordinates
+
+2. **Inconsistent Behavior Across Shape Types**:
+   - Context: Rectangle, ellipse, and line/arrow shapes had different resize behaviors
+   - Technical Details: The resize handlers were not applying proper coordinate transformations consistently
+   - Additional Complexity: Touch and mouse events had different handling logic
+
+### Solution Implemented:
+
+1. **Coordinate Transformation Fix**:
+   - Added proper conversion from canvas coordinates to image coordinates during resize operations
+   - Updated all resize handlers to use consistent coordinate conversion
+   - Ensured both mouse and touch events handle resizing correctly
+
+2. **Shape Type Consistency**:
+   - Standardized the resize logic across all shape types (rectangle, ellipse, line/arrow)
+   - Applied the same coordinate transformation approach to all shape types
+   - Made sure the resize logic is consistent between mouse and touch events
+
+### Results:
+
+Users can now resize shapes naturally, with the shape scaling properly relative to mouse movement. The corner points of shapes no longer snap to the cursor position, making the markup experience much more intuitive and precise.
+
 ## 2024-09-04: Screenshot Scaling and Display Improvements
 
 ### Issues Encountered:
@@ -550,3 +614,179 @@ The screenshot display now provides consistent viewing experiences in both windo
 ### Lessons Learned:
 - Visual indicators should be used sparingly and only when they provide critical information
 - Maintaining a clean, distraction-free UI often requires removing non-essential visual elements
+
+## 2024-09-05: Shape Inversion Fix
+
+### Issues Encountered:
+
+1. **Rectangle Shape Inversion Problem**:
+   - Symptoms: Shapes couldn't be properly inverted by dragging vertices past the opposite side
+   - Impact: Users couldn't flip/invert shapes by pulling vertices through to the other side
+   - Root Cause: The coordinate handling was confusing the vertices when attempting to drag past each other
+
+2. **Vertex Control Behavior**:
+   - Context: When users attempted to drag a vertex through the middle of the shape, the app would get confused
+   - Technical Details: The previous implementation had issues when tracking which vertex was being manipulated
+   - Additional Complexity: The behavior was inconsistent between mouse and touch events
+
+### Solution Implemented:
+
+1. **Direct Vertex Manipulation**:
+   - Modified the resize logic to use a switch statement that explicitly handles each corner case
+   - Implemented simple direct control of each vertex without normalization logic
+   - Applied the same vertex-specific approach to all shape types for consistency
+   
+2. **Status**: Resolved
+   - Users can now drag vertices through the opposite side to flip shapes both horizontally and vertically
+   - The behavior is more intuitive and matches user expectations for shape manipulation
+
+## 2024-09-06: Improved Shape Orientation Handling
+
+### Issues Encountered:
+
+1. **Markup Shape Flipping and Orientation Issues**:
+   - Symptoms: After flipping shapes by dragging vertices through the opposite side, further manipulations would behave inconsistently
+   - Impact: Users couldn't reliably manipulate shapes that had been previously flipped or inverted
+   - Root Cause: The corner detection logic wasn't properly detecting which vertex was which after shape orientation changes
+
+2. **Coordinate Tracking Problems**:
+   - Context: When a shape was flipped or inverted, the start/end points would get confused
+   - Technical Details: The code was using fixed start/end properties without considering the actual visual orientation of the shape
+   - Additional Complexity: Needed to distinguish between "logical" start/end points in the data structure vs. "visual" corners in the UI
+
+### Solution Implemented:
+
+1. **Dynamic Corner Detection**:
+   - Modified findShapeAtPoint function to calculate corners based on actual positions rather than stored start/end properties
+   - Added explicit corner identification (nwCorner, neCorner, etc.) based on real coordinates
+   - This ensures that corner detection remains consistent regardless of previous manipulations
+
+2. **Orientation-Aware Resize Handling**:
+   - Implemented comprehensive resize logic that evaluates the current shape orientation
+   - Added tracking of relative positions (startIsLeftOfEnd, startIsAboveEnd) to determine the actual visual orientation
+   - Created orientation-specific resize behavior that correctly handles all possible states (4 orientations × 4 corners)
+
+### Results:
+
+Users can now freely manipulate shapes regardless of previous flipping, rotation, or resizing operations. The markup tool maintains consistent behavior even after shapes have been inverted or flipped in any orientation.
+
+*   **Date:** 2024-08-17
+    *   **Problem:** Shape markups (annotations) not persisting between application restarts
+    *   **Context:** 
+        1) Users could draw shapes (rectangles, arrows, ellipses) on screenshots to annotate them
+        2) These annotations were stored in memory via Zustand store but lost when the application was restarted
+        3) The markup functionality worked well but lacked persistence
+    *   **Difficulty:** Database infrastructure needed to be extended:
+        1) No existing table structure for storing shape data in the database
+        2) The client-side shape model needed to be matched in the database
+        3) Repository methods needed to be implemented for CRUD operations
+        4) Needed to add new IPC methods to communicate between renderer and main processes
+    *   **Status:** Resolved - Implemented the following:
+        1) Added a new 'shapes' table to the database schema with appropriate columns and indexes
+        2) Created a ShapeRepository class for database operations on shapes
+        3) Added shape-related methods to DatabaseService for managing shapes
+        4) Added IPC handlers in ProjectService for shapes (save, get by image, get by step)
+        5) Extended preload.ts with methods to access shape functions from renderer
+        6) Updated StepsTab component to load shapes from database and persist them
+        7) Maintained backward compatibility with the existing in-memory store to prevent data loss
+
+This enhancement ensures that when users mark up screenshots with shapes (arrows, rectangles, ellipses), those annotations persist across application restarts. Shapes are now stored both in memory for performance and in the database for persistence.
+
+*   **Date:** 2024-08-14
+    *   **Problem:** Shape markup data not persisting when closing/reopening the app or switching tutorials
+    *   **Context:** 
+        1) When adding markup shapes to images in the Edit Steps section, the shapes would appear correctly but would disappear when the app was restarted or when switching between tutorials
+        2) The shapes were being saved to memory (Zustand store) but not properly persisted to the SQLite database
+    *   **Difficulty:** Multiple issues were occurring:
+        1) The ShapeRepository was not properly converting between database format and store format
+        2) The stepId wasn't being consistently included when saving shapes
+        3) The clearImageShapeData function wasn't being called at the right time when switching tutorials
+        4) No verification was happening to confirm shapes were actually stored in the database
+    *   **Status:** Resolved - Implemented the following fixes:
+        1) Added detailed logging throughout the shape saving and loading process for better debugging
+        2) Updated the shape database repository to include stepId in database queries and verify saves
+        3) Modified the loadStepsForTutorial function to properly clear shapes before loading new ones
+        4) Fixed the handleSaveMarkup function to ensure stepId is included in all shapes before saving
+        5) Enhanced the clearImageShapeData function in the store to provide better logging
+        6) Verified the database location at %APPDATA%\OpenScribe\openscribe\openscribe.db
+        7) Added verification queries to confirm shapes are properly saved and loaded from the database
+
+This enhancement ensures that when users mark up screenshots with shapes (arrows, rectangles, ellipses), those annotations persist across application restarts. Shapes are now stored both in memory for performance and in the database for persistence.
+
+*   **Date:** 2024-08-15
+    *   **Problem:** Shape markup appearing across all steps instead of being step-specific
+    *   **Context:** 
+        1) When adding markup shapes to a specific step, the shapes were appearing on all steps that shared the same screenshot path
+        2) The shapes were being stored in the database with the stepId, but retrieving and displaying shapes had issues
+    *   **Difficulty:** Multiple issues needed to be fixed:
+        1) The useStepsStore.getShapesForImage method was not properly filtering by stepId when called without it
+        2) Several UI components were calling getShapesForImage without providing the stepId parameter
+        3) The composite key format in the store (stepId:imagePath) was correct but not all code was using it properly
+        4) Missing the stepId parameter in saveShapesForImage calls in error handling paths
+    *   **Solution:** 
+        1) Updated useStepsStore.getShapesForImage to explicitly require stepId and return empty array if none provided
+        2) Fixed all UI components to properly pass stepId when calling getShapesForImage
+        3) Added proper error handling for cases where stepId might be missing
+        4) Fixed the error fallback path in handleSaveMarkup to include stepId
+        5) Updated the PreviewCanvas component to show only shapes for the selected step
+
+    *   **Resolution** Shapes are now correctly associated with specific steps and only appear on the steps they were drawn on.
+
+*   **Date:** 2024-09-07
+    *   **Problem:** Shape markup appearing across all steps instead of being step-specific (recurring issue)
+    *   **Context:** 
+        1) When adding markup shapes to a specific step, the shapes were appearing on all steps instead of being specific to the step where they were drawn
+        2) This issue was previously fixed but had recurred due to inconsistent use of stepId in some parts of the codebase
+    *   **Difficulty:** Multiple related issues were found:
+        1) The ExportTab component was retrieving shapes using only the image path without filtering by stepId
+        2) There was an instance of getShapesByImage being called without the stepId parameter 
+        3) The openMarkupModal function was being called with potentially undefined screenshotPath
+        4) The getShapesForImage function in the store allowed stepId to be optional when it should be required
+    *   **Solution:** 
+        1) Updated the PreviewCanvas component in ExportTab to properly use stepId when retrieving shapes
+        2) Modified useStepsStore.getShapesForImage to make stepId a required parameter
+        3) Fixed the error path in handleSaveMarkup to include stepId
+        4) Added null check for screenshotPath before calling openMarkupModal
+        5) Updated type definitions in preload.d.ts to include stepId parameter for getShapesByImage
+        
+    *   **Resolution:** Shapes now correctly appear only on the specific steps they were drawn on, resolving the issue of markup appearing across all steps.
+
+*   **Date:** 2024-09-23
+    *   **Problem:** Step ID display taking up unnecessary space in the UI and Delete button placement not optimal
+    *   **Context:** 
+        1) The Step ID was displayed at the bottom of the step edit view but wasn't necessary for users
+        2) The Delete button was placed at the bottom of the step, making it less discoverable
+    *   **Difficulty:** Simple UI layout adjustment
+    *   **Status:** Resolved - Implemented the following improvements:
+        1) Removed the Step ID display from the UI completely as it wasn't useful for end users
+        2) Moved the Delete button to the top header of the step editor for better discoverability
+        3) Maintained the footer section for potential future additions
+
+[2024-08-19] Issue: Markup not appearing on exported step documentation
+Problem: When exporting tutorials as PDF or DOCX, the markup annotations (shapes, lines, arrows) 
+were not appearing on the exported screenshots despite being visible in the preview.
+Root cause: The shape data wasn't being properly mapped between the renderer process and main process.
+The shapes were stored with keys in the format `stepId:imagePath` but the export service 
+was only looking up shapes by direct imagePath.
+Solution:
+1. Updated ExportService.ts to explicitly send shape data to main process before export
+2. Enhanced the applyShapesToImage method to look for shape data using pattern matching if direct 
+   path lookup fails (checking for keys with format `stepId:imagePath`)
+3. Added better logging and error handling in the ExportService
+4. Fixed the IPC method name discrepancy between preload and renderer
+This ensures that markup properly appears in the exported PDF and DOCX files.
+
+*   **Date:** 2025-10-10
+    *   **Problem:** Step titles not being saved when clicking off the tab or exporting tutorial
+    *   **Context:** 
+        1) Users were reporting that when they changed the title of a step and clicked away (or exported), the title reverted to the default
+        2) Only step descriptions were being saved properly, titles were being lost
+    *   **Difficulty:** Multiple architectural issues:
+        1) The database schema doesn't have a dedicated field for step titles, using only 'actionText' which was being used for step descriptions
+        2) When saving steps, the title field was updated in the UI store but not saved to the database
+        3) When loading steps, there was no mechanism to extract title information from the database
+    *   **Status:** Resolved - Implemented the following fixes:
+        1) Modified the handleStepUpdate function to save both title and description in the actionText field using a special format: "[TITLE]Title text[DESC]Description text"
+        2) Updated the loadStepsForTutorial function to parse this format when loading steps from the database
+        3) Added similar formatting in the addStep function for consistency
+        4) This provides a backward-compatible solution without requiring database schema changes

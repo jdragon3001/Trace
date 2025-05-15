@@ -18,20 +18,21 @@ export interface ShapeData {
   start: { x: number, y: number };
   end: { x: number, y: number };
   color: string;
+  stepId?: string; // Added to associate with specific step
 }
 
 interface StepsState {
   steps: DisplayStep[];
   isLoading: boolean;
-  imageShapeData: Record<string, ShapeData[]>;
+  imageShapeData: Record<string, ShapeData[]>; // Key format: "stepId:imagePath"
   addStep: (newStep: RecordingStep) => void;
   setSteps: (steps: DisplayStep[]) => void; // For reordering, deleting multiple, loading
   updateStep: (originalId: string, updatedData: Partial<Omit<DisplayStep, 'displayId' | 'originalId'>>) => void;
   deleteStep: (originalId: string) => void;
   setLoading: (isLoading: boolean) => void;
   clearSteps: () => void;
-  saveShapesForImage: (imagePath: string, shapes: ShapeData[]) => void;
-  getShapesForImage: (imagePath: string) => ShapeData[];
+  saveShapesForImage: (imagePath: string, shapes: ShapeData[], stepId: string) => void;
+  getShapesForImage: (imagePath: string, stepId: string) => ShapeData[];
   clearImageShapeData: () => void;
 }
 
@@ -112,20 +113,74 @@ export const useStepsStore = create<StepsState>()(
         }),
 
         // Shape data management
-        saveShapesForImage: (imagePath: string, shapes: ShapeData[]) => {
-          set((state) => ({
-            imageShapeData: {
-              ...state.imageShapeData,
-              [imagePath]: shapes
-            }
-          }));
+        saveShapesForImage: (imagePath: string, shapes: ShapeData[], stepId: string) => {
+          console.log(`[StepsStore] Saving ${shapes.length} shapes for image: ${imagePath}`);
+          
+          if (!imagePath) {
+            console.error('[StepsStore] Cannot save shapes: missing image path');
+            return;
+          }
+          
+          set((state) => {
+            // Deep copy the incoming shapes to avoid reference issues
+            const shapesCopy = JSON.parse(JSON.stringify(shapes));
+            
+            // Ensure every shape has an ID
+            const shapesWithIds = shapesCopy.map((shape: ShapeData) => ({
+              ...shape,
+              id: shape.id || `shape_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+              stepId: stepId
+            }));
+            
+            state.imageShapeData[`${stepId}:${imagePath}`] = shapesWithIds;
+            
+            console.log(`[StepsStore] Saved ${shapesWithIds.length} shapes for image: ${imagePath}`);
+            console.log(`[StepsStore] First shape:`, shapesWithIds.length > 0 ? JSON.stringify(shapesWithIds[0], null, 2) : 'none');
+            
+            // Count total shapes in store after update
+            let totalShapes = 0;
+            Object.values(state.imageShapeData).forEach(shapes => {
+              totalShapes += shapes.length;
+            });
+            console.log(`[StepsStore] Total shapes in store: ${totalShapes} (across ${Object.keys(state.imageShapeData).length} images)`);
+          });
         },
         
-        getShapesForImage: (imagePath: string) => {
-          return get().imageShapeData[imagePath] || [];
+        getShapesForImage: (imagePath: string, stepId: string) => {
+          // If stepId is not provided, we should not return any shapes as they are step-specific
+          if (!stepId) {
+            console.error(`[StepsStore] No stepId provided for getting shapes for image: ${imagePath}, returning empty array`);
+            return [];
+          }
+          
+          if (!imagePath) {
+            console.error(`[StepsStore] No imagePath provided for getting shapes for step: ${stepId}, returning empty array`);
+            return [];
+          }
+          
+          const key = `${stepId}:${imagePath}`;
+          const shapes = get().imageShapeData[key] || [];
+          console.log(`[StepsStore] Getting ${shapes.length} shapes for image: ${imagePath} and step: ${stepId}`);
+          return shapes;
         },
         
-        clearImageShapeData: () => set({ imageShapeData: {} })
+        clearImageShapeData: () => {
+          console.log(`[StepsStore] Clearing all image shape data`);
+          
+          // Count shapes before clearing
+          let shapesCount = 0;
+          Object.values(get().imageShapeData).forEach(shapes => {
+            shapesCount += shapes.length;
+          });
+          
+          console.log(`[StepsStore] Clearing ${shapesCount} shapes for ${Object.keys(get().imageShapeData).length} images`);
+          
+          set({ imageShapeData: {} });
+          
+          // Verify shapes were cleared
+          const newShapesCount = Object.values(get().imageShapeData).reduce((count, shapes) => count + shapes.length, 0);
+          console.log(`[StepsStore] After clearing: ${newShapesCount} shapes remain (should be 0)`);
+        }
       })
     ),
     { name: 'StepsStore' }

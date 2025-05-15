@@ -80,16 +80,39 @@ const MarkupModal: React.FC<{
   const [dragMode, setDragMode] = useState<'move' | 'resize-nw' | 'resize-ne' | 'resize-sw' | 'resize-se' | 'resize-start' | 'resize-end' | 'resize-e' | 'resize-w' | 'resize-n' | 'resize-s' | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   
+  // Add a debounce for shape state updates to prevent flickering
+  const debouncedSetShapes = useCallback(
+    (newShapes: Array<{
+      id: string;
+      type: 'ellipse' | 'arrow' | 'line' | 'rectangle';
+      start: { x: number, y: number };
+      end: { x: number, y: number };
+      color: string;
+    }>) => {
+      // Use requestAnimationFrame for smoother updates
+      requestAnimationFrame(() => {
+        setShapes(newShapes);
+      });
+    },
+    [setShapes]
+  );
+  
   // Add state to track original image dimensions and scale factors
   const [originalImageDimensions, setOriginalImageDimensions] = useState({ width: 0, height: 0 });
   const [scaleFactor, setScaleFactor] = useState({ x: 1, y: 1 });
 
-  // Load initialShapes when they change
+  // Load initialShapes when they change or modal opens
   useEffect(() => {
-    if (initialShapes && initialShapes.length > 0) {
-      console.log('[MarkupModal] Loading initial shapes:', initialShapes.length);
-      setShapes([...initialShapes]); // Use a new array to ensure state update
+    if (isOpen) { // Only act when the modal is supposed to be open
+      // Always synchronize the internal 'shapes' state with the 'initialShapes' prop.
+      // This ensures that if 'initialShapes' is empty (e.g., for a step with no markup),
+      // the modal's own 'shapes' state is also cleared.
+      console.log('[MarkupModal] Syncing with initialShapes. Count:', initialShapes ? initialShapes.length : 0);
+      setShapes(initialShapes ? [...initialShapes] : []); // Deep copy or set to empty array
     }
+    // No specific action is needed when isOpen becomes false here, as the parent component (StepsTab)
+    // handles clearing its `markupShapes` state via `closeMarkupModal`, and `openMarkupModal` 
+    // will provide the correct `initialShapes` for the next opening.
   }, [initialShapes, isOpen]);
 
   // Load the image into canvas when opened, then apply shapes
@@ -276,19 +299,15 @@ const MarkupModal: React.FC<{
       if (selectedShape) {
         // Check all handles based on shape type
         if (selectedShape.type === 'rectangle') {
-          const left = Math.min(selectedShape.start.x, selectedShape.end.x);
-          const right = Math.max(selectedShape.start.x, selectedShape.end.x);
-          const top = Math.min(selectedShape.start.y, selectedShape.end.y);
-          const bottom = Math.max(selectedShape.start.y, selectedShape.end.y);
-          
-          // Check corners
-          if (isNearPoint(point, { x: left, y: top })) 
+          // Use direct start/end points for corner detection
+          // This approach is simple and matches the resize handling
+          if (isNearPoint(point, selectedShape.start)) 
             return { id: selectedShapeId, dragMode: 'resize-nw' as const };
-          if (isNearPoint(point, { x: right, y: top })) 
+          if (isNearPoint(point, { x: selectedShape.end.x, y: selectedShape.start.y })) 
             return { id: selectedShapeId, dragMode: 'resize-ne' as const };
-          if (isNearPoint(point, { x: left, y: bottom })) 
+          if (isNearPoint(point, { x: selectedShape.start.x, y: selectedShape.end.y })) 
             return { id: selectedShapeId, dragMode: 'resize-sw' as const };
-          if (isNearPoint(point, { x: right, y: bottom })) 
+          if (isNearPoint(point, selectedShape.end)) 
             return { id: selectedShapeId, dragMode: 'resize-se' as const };
         } 
         else if (selectedShape.type === 'line' || selectedShape.type === 'arrow') {
@@ -410,28 +429,17 @@ const MarkupModal: React.FC<{
         const shape = displayShapes.find(s => s.id === result.id);
         if (shape) {
           if (result.dragMode === 'move') {
-            // For ellipse, offset from center
-            if (shape.type === 'ellipse') {
-              setDragOffset({
-                x: clickPoint.x - shape.start.x,
-                y: clickPoint.y - shape.start.y
-              });
-            } 
-            // For rectangle, calculate offset from original points
-            else if (shape.type === 'rectangle') {
-              // Store both the click offset from start and end points
-              setDragOffset({
-                x: clickPoint.x - shape.start.x,
-                y: clickPoint.y - shape.start.y
-              });
-            }
-            // For lines and arrows, offset from start
-            else {
-              setDragOffset({
-                x: clickPoint.x - shape.start.x,
-                y: clickPoint.y - shape.start.y
-              });
-            }
+            // For all shape types, store offset from click point to shape start
+            // in canvas coordinates
+            const scaledStart = {
+              x: shape.start.x,
+              y: shape.start.y
+            };
+            
+            setDragOffset({
+              x: clickPoint.x - scaledStart.x,
+              y: clickPoint.y - scaledStart.y
+            });
           } else {
             // For resizing, just reset the offset
             setDragOffset({ x: 0, y: 0 });
@@ -487,125 +495,101 @@ const MarkupModal: React.FC<{
         const updatedShape = { ...shape };
         
         if (dragMode === 'move') {
-          // Move the entire shape
+          // Calculate the new position in canvas coordinates
+          const newCanvasX = currentPos.x - dragOffset.x;
+          const newCanvasY = currentPos.y - dragOffset.y;
+          
+          // Convert to original image coordinates
+          const newImageX = newCanvasX / scaleFactor.x;
+          const newImageY = newCanvasY / scaleFactor.y;
+          
           if (shape.type === 'ellipse') {
-            // For ellipse, calculate new positions in display coordinates
-            const newDisplayX = currentPos.x - dragOffset.x;
-            const newDisplayY = currentPos.y - dragOffset.y;
+            // Store the distance from start to end for the ellipse
+            const dx = shape.end.x - shape.start.x;
+            const dy = shape.end.y - shape.start.y;
             
-            // Convert back to original image coordinates
+            // Update start point (center of ellipse)
             updatedShape.start = {
-              x: newDisplayX / scaleFactor.x,
-              y: newDisplayY / scaleFactor.y
+              x: newImageX,
+              y: newImageY
             };
             
-            // Calculate the radius vector
-            const dx = selectedDisplayShape.end.x - selectedDisplayShape.start.x;
-            const dy = selectedDisplayShape.end.y - selectedDisplayShape.start.y;
-            
-            // Update end point in original image coordinates
+            // Maintain the same radius by keeping the same distance from start to end
             updatedShape.end = {
-              x: updatedShape.start.x + (dx / scaleFactor.x),
-              y: updatedShape.start.y + (dy / scaleFactor.y)
+              x: newImageX + dx,
+              y: newImageY + dy
             };
           } 
-          else if (shape.type === 'rectangle') {
-            // For rectangle, move directly using the stored offset
-            const dx = currentPos.x - dragOffset.x - shape.start.x;
-            const dy = currentPos.y - dragOffset.y - shape.start.y;
-            
-            // Move both points by the same amount
-            updatedShape.start = {
-              x: shape.start.x + dx,
-              y: shape.start.y + dy
-            };
-            updatedShape.end = {
-              x: shape.end.x + dx,
-              y: shape.end.y + dy
-            };
-          } 
-          else {
-            // For lines and arrows, move both endpoints together
-            const dx = currentPos.x - dragOffset.x - shape.start.x;
-            const dy = currentPos.y - dragOffset.y - shape.start.y;
+          else if (shape.type === 'rectangle' || shape.type === 'line' || shape.type === 'arrow') {
+            // For rectangles, lines, and arrows, move by the delta in original image coordinates
+            const deltaX = (newImageX - shape.start.x);
+            const deltaY = (newImageY - shape.start.y);
             
             updatedShape.start = {
-              x: shape.start.x + dx,
-              y: shape.start.y + dy
+              x: shape.start.x + deltaX,
+              y: shape.start.y + deltaY
             };
+            
             updatedShape.end = {
-              x: shape.end.x + dx,
-              y: shape.end.y + dy
+              x: shape.end.x + deltaX,
+              y: shape.end.y + deltaY
             };
           }
         } 
         else if (dragMode && dragMode.startsWith('resize-')) {
+          // Convert current position to image coordinates for proper scaling
+          const currentPosInImageCoords = {
+            x: currentPos.x / scaleFactor.x,
+            y: currentPos.y / scaleFactor.y
+          };
+          
           if (shape.type === 'rectangle') {
-            // Handle corner resizing for rectangle
-            const isStart = {
-              x: dragMode === 'resize-nw' || dragMode === 'resize-sw',
-              y: dragMode === 'resize-nw' || dragMode === 'resize-ne'
-            };
-            
-            if (isStart.x) updatedShape.start.x = currentPos.x;
-            else updatedShape.end.x = currentPos.x;
-            
-            if (isStart.y) updatedShape.start.y = currentPos.y;
-            else updatedShape.end.y = currentPos.y;
-          } 
+            // Simplified approach: directly update the point based on resize mode
+            // without complex orientation checks
+            switch (dragMode) {
+              case 'resize-nw':
+                updatedShape.start = currentPosInImageCoords;
+                break;
+              case 'resize-ne':
+                updatedShape.start.y = currentPosInImageCoords.y;
+                updatedShape.end.x = currentPosInImageCoords.x;
+                break;
+              case 'resize-sw':
+                updatedShape.start.x = currentPosInImageCoords.x;
+                updatedShape.end.y = currentPosInImageCoords.y;
+                break;
+              case 'resize-se':
+                updatedShape.end = currentPosInImageCoords;
+                break;
+            }
+          }
           else if (shape.type === 'line' || shape.type === 'arrow') {
-            // Handle endpoint resizing for lines and arrows
             if (dragMode === 'resize-start') {
-              updatedShape.start = currentPos;
+              updatedShape.start = currentPosInImageCoords;
             } else {
-              updatedShape.end = currentPos;
+              updatedShape.end = currentPosInImageCoords;
             }
-          } 
+          }
           else if (shape.type === 'ellipse') {
-            if (dragMode === 'resize-end') {
-              const dx = currentPos.x - shape.start.x;
-              const dy = currentPos.y - shape.start.y;
-              updatedShape.end = {
-                x: shape.start.x + Math.abs(dx) * (dx < 0 ? -1 : 1),
-                y: shape.start.y + Math.abs(dy) * (dy < 0 ? -1 : 1)
-              };
-            }
-            // Handle cardinal direction resizing for ellipses
-            else if (dragMode === 'resize-e' || dragMode === 'resize-w') {
-              // Only change the x-coordinate (width)
-              const dx = currentPos.x - shape.start.x;
-              
-              if (dragMode === 'resize-e') {
-                // East resize - positive x direction
-                updatedShape.end = {
-                  x: shape.start.x + Math.abs(dx),
-                  y: shape.end.y // Keep y-coordinate unchanged
-                };
-              } else {
-                // West resize - negative x direction
-                updatedShape.end = {
-                  x: shape.start.x - Math.abs(dx),
-                  y: shape.end.y // Keep y-coordinate unchanged
-                };
-              }
-            }
-            else if (dragMode === 'resize-n' || dragMode === 'resize-s') {
-              // Only change the y-coordinate (height)
-              const dy = currentPos.y - shape.start.y;
-              
-              if (dragMode === 'resize-s') {
-                // South resize - positive y direction
-                updatedShape.end = {
-                  x: shape.end.x, // Keep x-coordinate unchanged
-                  y: shape.start.y + Math.abs(dy)
-                };
-              } else {
-                // North resize - negative y direction
-                updatedShape.end = {
-                  x: shape.end.x, // Keep x-coordinate unchanged
-                  y: shape.start.y - Math.abs(dy)
-                };
-              }
+            // Update based on which cardinal direction is being manipulated
+            // This allows for more precise control over width and height
+            switch (dragMode) {
+              case 'resize-end':
+                // Free-form resizing in any direction
+                updatedShape.end = currentPosInImageCoords;
+                break;
+              case 'resize-e': // East - only change x (width)
+                updatedShape.end.x = currentPosInImageCoords.x;
+                break;
+              case 'resize-w': // West - only change x (width)
+                updatedShape.end.x = 2 * shape.start.x - currentPosInImageCoords.x;
+                break;
+              case 'resize-n': // North - only change y (height)
+                updatedShape.end.y = 2 * shape.start.y - currentPosInImageCoords.y;
+                break;
+              case 'resize-s': // South - only change y (height)
+                updatedShape.end.y = currentPosInImageCoords.y;
+                break;
             }
           }
         }
@@ -613,7 +597,8 @@ const MarkupModal: React.FC<{
         return updatedShape;
       });
       
-      setShapes(updatedShapes);
+      // When updating shapes, use the debounced version:
+      debouncedSetShapes(updatedShapes);
     } 
     else if (drawing && tool !== 'select') {
       // We're drawing a new shape
@@ -700,13 +685,18 @@ const MarkupModal: React.FC<{
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
+    let mounted = true;
+    
     const img = new Image();
     img.onload = () => {
+      if (!mounted) return;
+      
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       
       // Draw all shapes with scaling applied
       shapes.forEach(shape => {
+        if (!mounted) return;
         const isSelected = shape.id === selectedShapeId;
         const scaledShape = {
           ...shape,
@@ -723,6 +713,11 @@ const MarkupModal: React.FC<{
       });
     };
     img.src = imageUrl;
+    
+    // Cleanup function to prevent updates after unmounting
+    return () => {
+      mounted = false;
+    };
   }, [shapes, selectedShapeId, isOpen, imageUrl, scaleFactor]);
 
   // Update touch handlers to match the mouse handlers
@@ -830,40 +825,44 @@ const MarkupModal: React.FC<{
         if (!displayShape) return shape;
         
         if (dragMode === 'move') {
-          // Calculate new display coordinates, then convert to original image coordinates
-          const newDisplayX = currentPos.x - dragOffset.x;
-          const newDisplayY = currentPos.y - dragOffset.y;
+          // Calculate the new position in canvas coordinates
+          const newCanvasX = currentPos.x - dragOffset.x;
+          const newCanvasY = currentPos.y - dragOffset.y;
           
-          // Convert back to original image coordinates
-          updatedShape.start = {
-            x: newDisplayX / scaleFactor.x,
-            y: newDisplayY / scaleFactor.y
-          };
+          // Convert to original image coordinates
+          const newImageX = newCanvasX / scaleFactor.x;
+          const newImageY = newCanvasY / scaleFactor.y;
           
-          // For ellipse, rectangle, etc. update the end point as well
-          if (shape.type === 'ellipse' || shape.type === 'rectangle') {
-            // Calculate the span vector in display coordinates
-            const dx = displayShape.end.x - displayShape.start.x;
-            const dy = displayShape.end.y - displayShape.start.y;
+          if (shape.type === 'ellipse') {
+            // Store the distance from start to end for the ellipse
+            const dx = shape.end.x - shape.start.x;
+            const dy = shape.end.y - shape.start.y;
             
-            // Update end point in original image coordinates
-            updatedShape.end = {
-              x: updatedShape.start.x + (dx / scaleFactor.x),
-              y: updatedShape.start.y + (dy / scaleFactor.y)
+            // Update start point (center of ellipse)
+            updatedShape.start = {
+              x: newImageX,
+              y: newImageY
             };
-          } else if (shape.type === 'line' || shape.type === 'arrow') {
-            // For lines and arrows, move both points
-            const startDeltaX = currentPos.x - dragOffset.x - displayShape.start.x;
-            const startDeltaY = currentPos.y - dragOffset.y - displayShape.start.y;
+            
+            // Maintain the same radius by keeping the same distance from start to end
+            updatedShape.end = {
+              x: newImageX + dx,
+              y: newImageY + dy
+            };
+          } 
+          else if (shape.type === 'rectangle' || shape.type === 'line' || shape.type === 'arrow') {
+            // For rectangles, lines, and arrows, move by the delta in original image coordinates
+            const deltaX = (newImageX - shape.start.x);
+            const deltaY = (newImageY - shape.start.y);
             
             updatedShape.start = {
-              x: shape.start.x + (startDeltaX / scaleFactor.x),
-              y: shape.start.y + (startDeltaY / scaleFactor.y)
+              x: shape.start.x + deltaX,
+              y: shape.start.y + deltaY
             };
             
             updatedShape.end = {
-              x: shape.end.x + (startDeltaX / scaleFactor.x),
-              y: shape.end.y + (startDeltaY / scaleFactor.y)
+              x: shape.end.x + deltaX,
+              y: shape.end.y + deltaY
             };
           }
         } 
@@ -872,7 +871,8 @@ const MarkupModal: React.FC<{
         return updatedShape;
       });
       
-      setShapes(updatedShapes);
+      // When updating shapes, use the debounced version:
+      debouncedSetShapes(updatedShapes);
     } 
     else if (tool !== 'select') {
       // Drawing a new shape
@@ -1060,86 +1060,123 @@ const MarkupModal: React.FC<{
         ×
       </button>
       <div 
-        className="mb-4 bg-white rounded-lg p-2 flex flex-wrap gap-2"
+        className="mb-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg p-3 flex items-center gap-2 shadow-md"
         onClick={handleContentClick}
       >
-        <div className="flex space-x-2">
-          <button 
-            className={`p-2 rounded ${tool === 'select' ? 'bg-blue-100' : 'bg-gray-100'}`}
-            onClick={(e) => { e.stopPropagation(); setTool('select'); }}
-            title="Select & Move"
-          >
-            👆
-          </button>
-          <button 
-            className={`p-2 rounded ${tool === 'ellipse' ? 'bg-blue-100' : 'bg-gray-100'}`}
-            onClick={(e) => { e.stopPropagation(); setTool('ellipse'); }}
-            title="Ellipse"
-          >
-            ⭕
-          </button>
-          <button 
-            className={`p-2 rounded ${tool === 'rectangle' ? 'bg-blue-100' : 'bg-gray-100'}`}
-            onClick={(e) => { e.stopPropagation(); setTool('rectangle'); }}
-            title="Rectangle"
-          >
-            🔲
-          </button>
-          <button 
-            className={`p-2 rounded ${tool === 'line' ? 'bg-blue-100' : 'bg-gray-100'}`}
-            onClick={(e) => { e.stopPropagation(); setTool('line'); }}
-            title="Line"
-          >
-            ➖
-          </button>
-          <button 
-            className={`p-2 rounded ${tool === 'arrow' ? 'bg-blue-100' : 'bg-gray-100'}`}
-            onClick={(e) => { e.stopPropagation(); setTool('arrow'); }}
-            title="Arrow"
-          >
-            ➡️
-          </button>
-        </div>
-        
-        <div className="flex items-center space-x-2">
-          <label className="text-sm font-medium">Color:</label>
-          <input 
-            type="color" 
-            value={color} 
-            onChange={(e) => { e.stopPropagation(); setColor(e.target.value); }}
-            className="w-8 h-8 cursor-pointer"
-          />
-        </div>
-        
-        <div className="flex space-x-2">
-          <button 
-            className="p-2 bg-gray-100 rounded"
-            onClick={(e) => { e.stopPropagation(); handleUndo(); }}
-            title="Undo"
-            disabled={shapes.length === 0}
-          >
-            ↩️
-          </button>
-          {selectedShapeId && (
+        <div className="flex items-center space-x-2 ml-auto">
+          <div className="flex bg-white p-1.5 rounded-md shadow-sm space-x-1">
             <button 
-              className="p-2 bg-gray-100 rounded"
-              onClick={(e) => { e.stopPropagation(); handleDeleteSelected(); }}
-              title="Delete Selected"
+              className={`p-1.5 rounded-md ${tool === 'select' ? 'bg-blue-500 text-white' : 'bg-gray-100 hover:bg-gray-200'} transition-colors duration-200`}
+              onClick={(e) => { e.stopPropagation(); setTool('select'); }}
+              title="Select & Move"
             >
-              🗑️
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3,3 L10.5,20 L13.5,12 L21,9 L3,3z" />
+              </svg>
             </button>
-          )}
+            <button 
+              className={`p-1.5 rounded-md ${tool === 'ellipse' ? 'bg-blue-500 text-white' : 'bg-gray-100 hover:bg-gray-200'} transition-colors duration-200`}
+              onClick={(e) => { e.stopPropagation(); setTool('ellipse'); }}
+              title="Ellipse"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+              </svg>
+            </button>
+            <button 
+              className={`p-1.5 rounded-md ${tool === 'rectangle' ? 'bg-blue-500 text-white' : 'bg-gray-100 hover:bg-gray-200'} transition-colors duration-200`}
+              onClick={(e) => { e.stopPropagation(); setTool('rectangle'); }}
+              title="Rectangle"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+              </svg>
+            </button>
+            <button 
+              className={`p-1.5 rounded-md ${tool === 'line' ? 'bg-blue-500 text-white' : 'bg-gray-100 hover:bg-gray-200'} transition-colors duration-200`}
+              onClick={(e) => { e.stopPropagation(); setTool('line'); }}
+              title="Line"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </button>
+            <button 
+              className={`p-1.5 rounded-md ${tool === 'arrow' ? 'bg-blue-500 text-white' : 'bg-gray-100 hover:bg-gray-200'} transition-colors duration-200`}
+              onClick={(e) => { e.stopPropagation(); setTool('arrow'); }}
+              title="Arrow"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="5" y1="12" x2="19" y2="12"/>
+                <polyline points="12 5 19 12 12 19"/>
+              </svg>
+            </button>
+          </div>
+          
+          <div className="flex items-center bg-white p-1.5 rounded-md shadow-sm space-x-2">
+            <label className="text-xs font-medium text-gray-700">Color:</label>
+            <div className="relative">
+              <input 
+                type="color" 
+                value={color} 
+                onChange={(e) => { e.stopPropagation(); setColor(e.target.value); }}
+                className="w-7 h-7 cursor-pointer rounded-md border border-gray-300"
+              />
+              <div 
+                className="absolute -right-1 -top-1 w-3 h-3 rounded-full border-2 border-white" 
+                style={{ backgroundColor: color }}
+              ></div>
+            </div>
+          </div>
+          
+          <div className="flex bg-white p-1.5 rounded-md shadow-sm space-x-1">
+            <button 
+              className="p-1.5 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={(e) => { e.stopPropagation(); handleUndo(); }}
+              title="Undo"
+              disabled={shapes.length === 0}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 14l-4-4 4-4"/>
+                <path d="M5 10h11a4 4 0 0 1 0 8h-1"/>
+              </svg>
+            </button>
+            {selectedShapeId && (
+              <button 
+                className="p-1.5 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors duration-200"
+                onClick={(e) => { e.stopPropagation(); handleDeleteSelected(); }}
+                title="Delete Selected"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 6h18"/>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+                  <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                </svg>
+              </button>
+            )}
+          </div>
+          
           <button 
-            className="px-3 py-2 bg-red-500 text-white rounded"
+            className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors duration-200 flex items-center space-x-1"
             onClick={(e) => { e.stopPropagation(); onClose(); }}
           >
-            Cancel
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+            <span>Cancel</span>
           </button>
+          
           <button 
-            className="px-3 py-2 bg-green-500 text-white rounded"
+            className="px-3 py-1.5 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors duration-200 flex items-center space-x-1"
             onClick={(e) => { e.stopPropagation(); handleSave(); }}
           >
-            Save
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+              <polyline points="17 21 17 13 7 13 7 21"/>
+              <polyline points="7 3 7 8 15 8"/>
+            </svg>
+            <span>Save</span>
           </button>
         </div>
       </div>
@@ -1163,9 +1200,10 @@ const MarkupModal: React.FC<{
 
 interface StepsTabProps {
   tutorialId?: string;
+  realtimeSteps?: any[]; // Add this prop to accept realtime steps from App component
 }
 
-export const StepsTab: React.FC<StepsTabProps> = ({ tutorialId }) => {
+export const StepsTab: React.FC<StepsTabProps> = ({ tutorialId, realtimeSteps = [] }) => {
   const steps = useStepsStore((state) => state.steps);
   const addStoreStep = useStepsStore((state) => state.addStep);
   const setStoreSteps = useStepsStore((state) => state.setSteps);
@@ -1224,100 +1262,187 @@ export const StepsTab: React.FC<StepsTabProps> = ({ tutorialId }) => {
   // Function to look up shapes for a specific image
   // Now just use the store function directly, no need for a wrapper
   
-  const openMarkupModal = useCallback((imagePath: string) => {
+  const openMarkupModal = useCallback(async (imagePath: string, stepId: string) => {
     if (imageCache[imagePath]) {
       setModalImage(imageCache[imagePath]);
       
-      // Load existing shapes for this image
-      const existingShapes = getShapesForImage(imagePath);
-      console.log(`[Markup] Loading markup modal for image: ${imagePath}`);
-      console.log(`[Markup] Found ${existingShapes.length} existing shapes`);
-      if (existingShapes.length > 0) {
-        console.log('[Markup] Shape details:', JSON.stringify(existingShapes[0], null, 2));
+      try {
+        // First get existing shapes from store
+        const existingShapes = getShapesForImage(imagePath, stepId);
+        console.log(`[Markup] Loading markup modal for image: ${imagePath} and step: ${stepId}`);
+        console.log(`[Markup] Found ${existingShapes.length} existing shapes in store`);
+        
+        // Then try to load shapes from JSON file if available
+        const jsonShapes = await window.electronAPI.loadShapesFromJson(imagePath);
+        console.log(`[Markup] Loaded ${jsonShapes?.length || 0} shapes from JSON file`);
+        
+        // Combine both sources of shapes
+        const combinedShapes = [...existingShapes];
+        
+        // Add JSON shapes if not already in existingShapes (avoid duplicates)
+        if (jsonShapes && jsonShapes.length > 0) {
+          // Check each JSON shape and add if it's not already in store
+          jsonShapes.forEach((jsonShape: any) => {
+            // Check if this shape is already in existingShapes by ID
+            const alreadyExists = existingShapes.some((storeShape: any) => 
+              storeShape.id === jsonShape.id
+            );
+            
+            if (!alreadyExists) {
+              combinedShapes.push(jsonShape);
+            }
+          });
+        }
+        
+        console.log(`[Markup] Combined ${combinedShapes.length} shapes total`);
+        if (combinedShapes.length > 0) {
+          console.log('[Markup] Shape details:', JSON.stringify(combinedShapes[0], null, 2));
+        }
+        
+        setMarkupShapes(combinedShapes);
+        setIsMarkupModalOpen(true);
+      } catch (error) {
+        console.error('[Markup] Error loading shapes:', error);
+        // Still open modal even if shape loading fails
+        setMarkupShapes(getShapesForImage(imagePath, stepId));
+        setIsMarkupModalOpen(true); 
       }
-      
-      setMarkupShapes(existingShapes);
-      setIsMarkupModalOpen(true);
     }
   }, [imageCache, getShapesForImage]);
 
   const closeMarkupModal = useCallback(() => {
     setIsMarkupModalOpen(false);
     setModalImage(null);
+    // Clear markup shapes to prevent them from being reused in another step
     setMarkupShapes([]);
+    console.log('[Markup] Modal closed, shape state cleared');
   }, []);
 
-  const handleSaveMarkup = useCallback(async (modifiedImageUrl: string, shapeData: any, stepId: string) => {
+  const handleSaveMarkup = useCallback(async (modifiedImageUrl: string, shapeData: any[], stepId: string) => {
     try {
-      console.log('[Markup] Starting save process for markup data');
-      console.log('[Markup] Step ID:', stepId);
-      
-      // Find the step in the current steps array first (faster than database lookup)
-      const stepInMemory = steps.find(step => step.originalId === stepId);
-      
-      if (stepInMemory && stepInMemory.screenshotPath) {
-        // Use the step information from memory
-        console.log(`[Markup] Found step in memory with screenshot path: ${stepInMemory.screenshotPath}`);
-        
-        // Save the shape data in memory using the original image path
-        saveShapesForImage(stepInMemory.screenshotPath, shapeData);
-        console.log(`[Markup] Shape data saved in memory for ${stepInMemory.screenshotPath} (${shapeData.length} shapes)`);
-        
-        // Close the modal
-        closeMarkupModal();
-        
-        // Notify the user with a clearer message
-        alert(`Markup saved! ${shapeData.length} shape${shapeData.length !== 1 ? 's' : ''} saved and will be applied when viewing or exporting.`);
+      console.log(`[Markup] Saving markup for step ${stepId}`);
+      console.log(`[Markup] ${shapeData.length} shapes to save`);
+      console.log(`[Markup] Shape data example:`, shapeData.length > 0 ? JSON.stringify(shapeData[0]) : 'none');
+
+      if (!stepId) {
+        console.error('[Markup] Cannot save markup: Missing stepId');
         return;
       }
-      
-      // If not found in memory, try to get it from the database
-      console.log(`[Markup] Step not found in memory, trying database lookup for ID: ${stepId}`);
-      const step = await stepRepository.getStepById(stepId);
-      
+
+      // Get step details first
+      const step = steps.find(s => s.originalId === stepId);
       if (!step) {
-        console.error(`[Markup] Step not found in database with ID: ${stepId}`);
-        throw new Error('Step not found. Unable to save markup.');
+        console.error(`[Markup] Cannot find step with ID ${stepId} in steps list`);
+        return;
       }
-      
+
       if (!step.screenshotPath) {
-        console.error(`[Markup] Step found but missing screenshot path. Step ID: ${stepId}`);
-        throw new Error('Step missing screenshot path. Unable to save markup.');
+        console.error(`[Markup] Step ${stepId} has no screenshot path`);
+        return;
       }
-      
-      // Save the shape data in memory using the original image path
-      saveShapesForImage(step.screenshotPath, shapeData);
-      console.log(`[Markup] Shape data saved in memory for ${step.screenshotPath}`);
-      
-      // Close the modal
-      closeMarkupModal();
-      
-      // Notify the user with a clearer message
-      alert(`Markup saved! ${shapeData.length} shape${shapeData.length !== 1 ? 's' : ''} saved and will be applied when viewing or exporting.`);
-      
+
+      console.log(`[Markup] Found step with screenshotPath: ${step.screenshotPath}`);
+
+      // Make a deep copy of the step for in-memory manipulation
+      const stepInMemory = JSON.parse(JSON.stringify(step));
+        
+      // First ensure shapes are saved to the database for persistence
+      try {
+        console.log(`[Markup] Saving shapes to database for step ${stepId} and image ${stepInMemory.screenshotPath}`);
+        console.log(`[Markup] Shapes to save (types):`, JSON.stringify(shapeData.map(s => ({ type: s.type, color: s.color }))));
+        
+        // Add stepId to each shape
+        const shapesWithStepId = shapeData.map(shape => ({
+          ...shape,
+          stepId: stepId,
+          imagePath: stepInMemory.screenshotPath // Ensure imagePath is set properly
+        }));
+        
+        console.log(`[Markup] Sending shapes to saveShapes API:`, JSON.stringify(shapesWithStepId.map(s => ({ 
+          id: s.id, 
+          stepId: s.stepId, 
+          imagePath: s.imagePath, 
+          type: s.type 
+        }))));
+        
+        const savedShapes = await window.electronAPI.saveShapes(stepId, stepInMemory.screenshotPath, shapesWithStepId);
+        console.log(`[Markup] Shape data saved to database: ${savedShapes.length} shapes`);
+        console.log(`[Markup] Saved shapes sample:`, savedShapes.length > 0 ? JSON.stringify(savedShapes[0]) : 'none');
+        
+        // Convert shapes from database format to store format
+        const storeShapes = savedShapes.map(shape => ({
+          id: shape.id || `shape_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+          type: shape.type,
+          start: shape.start,
+          end: shape.end,
+          color: shape.color
+        }));
+        
+        // Then update the memory store with the saved shapes (which now have IDs from the database)
+        console.log(`[Markup] Saving ${storeShapes.length} shapes to store for path: ${stepInMemory.screenshotPath}`);
+        saveShapesForImage(stepInMemory.screenshotPath, storeShapes, stepId);
+        console.log(`[Markup] Shape data saved in memory for ${stepInMemory.screenshotPath}`);
+        
+        // Verify data is in store
+        const storedShapes = getShapesForImage(stepInMemory.screenshotPath, stepId);
+        console.log(`[Markup] Verified ${storedShapes.length} shapes in store for ${stepInMemory.screenshotPath}`);
+        
+        // Verify data is in database with a separate query
+        const verifyShapes = await window.electronAPI.getShapesByImage(stepInMemory.screenshotPath, stepId);
+        console.log(`[Markup] Verification: ${verifyShapes.length} shapes found in database after save (should match ${savedShapes.length})`);
+        if (verifyShapes.length === 0) {
+          console.error('[Markup] CRITICAL: No shapes were found in the database after save! This indicates a database save failure.');
+        }
+      } catch (error) {
+        console.error('[Markup] Error saving shapes to database:', error);
+        // Save to memory as fallback even if database fails
+        const storeShapes = shapeData.map(shape => ({
+          id: shape.id || `shape_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+          type: shape.type,
+          start: shape.start,
+          end: shape.end,
+          color: shape.color
+        }));
+        console.log(`[Markup] Falling back to memory-only save for ${storeShapes.length} shapes`);
+        saveShapesForImage(stepInMemory.screenshotPath, storeShapes, stepId);
+        console.log(`[Markup] Shape data saved to memory only (database failed)`);
+      }
+
+      // Update step with modified image URL if provided and differs from original
+      if (modifiedImageUrl) {
+        console.log(`[Markup] Image was modified, but we only store shapes separately`);
+      }
+
+      // Close the modal after saving
+      setIsMarkupModalOpen(false);
+      setMarkupShapes([]);
+
     } catch (error) {
-      console.error('[Markup] Error saving markup:', error);
-      alert(`Error saving markup: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      // Don't close the modal on error so the user doesn't lose their work
+      console.error('[Markup] Error in handle save markup:', error);
     }
-  }, [saveShapesForImage, stepRepository, closeMarkupModal, steps]);
+  }, [steps, saveShapesForImage, getShapesForImage]);
   
   // Load steps for the tutorial when tutorialId changes
   useEffect(() => {
-    if (tutorialId) {
-      console.log(`[StepsTab] Tutorial ID changed to ${tutorialId}, loading steps...`);
-      loadStepsForTutorial(tutorialId);
-    } else {
-      console.log(`[StepsTab] No tutorial ID provided, clearing steps...`);
-      // Clear steps when no tutorial is selected
-      clearStoreSteps();
+    if (!tutorialId) {
+      console.log('[StepsTab] No tutorialId provided, skipping load');
+      return;
     }
-
-    // Cleanup when component unmounts or tutorial changes
-    return () => {
-      console.log(`[StepsTab] Tutorial ID changing from ${tutorialId}, cleaning up...`);
-    };
-  }, [tutorialId]);
+    
+    console.log(`[StepsTab] Tutorial ID changed to: ${tutorialId}, loading steps...`);
+    
+    // Clear current state before loading new data
+    setSelectedStepId(null);
+    setImageCache({});
+    setModalImage(null);
+    setIsMarkupModalOpen(false);
+    setMarkupShapes([]);
+    clearStoreSteps();
+    useStepsStore.getState().clearImageShapeData();
+    
+    // Load steps for this tutorial
+    loadStepsForTutorial(tutorialId);
+  }, [tutorialId, clearStoreSteps]);
   
   // Add event listener for shape data requests from ExportTab
   useEffect(() => {
@@ -1356,73 +1481,162 @@ export const StepsTab: React.FC<StepsTabProps> = ({ tutorialId }) => {
       setStoreLoading(true);
       setLoadError(null);
       
-      console.log(`[StepsTab] Loading steps for tutorial: ${tutorialId}`);
+      console.log(`[StepsTab] ===== LOADING STEPS FOR TUTORIAL: ${tutorialId} =====`);
       
       // Clear existing steps in the store BEFORE loading new ones
       clearStoreSteps();
+      console.log('[StepsTab] Cleared existing steps from store');
+      
+      // Clear any shapes from store to ensure clean state before loading new shapes
+      console.log('[StepsTab] Clearing existing shapes from store to ensure clean state');
+      useStepsStore.getState().clearImageShapeData();
       
       // Get steps from the repository
       const steps = await stepRepository.loadStepsForTutorial(tutorialId);
       
-      console.log(`[StepsTab] Loaded ${steps.length} steps for tutorial ${tutorialId}`);
-      
-      // Save first to check if steps are properly loaded
-      let stepIdsLoaded: string[] = [];
+      console.log(`[StepsTab] Loaded ${steps.length} steps from database for tutorial ${tutorialId}`);
+      if (steps.length > 0) {
+        console.log('[StepsTab] First step sample:', JSON.stringify({
+          id: steps[0].id,
+          order: steps[0].order,
+          screenshotPath: steps[0].screenshotPath
+        }));
+      }
       
       // Add all loaded steps to the store
       if (steps.length > 0) {
-        console.log('[StepsTab] Processing loaded steps for display');
-        
-        steps.forEach(step => {
-          if (step.id) {
-            stepIdsLoaded.push(step.id);
-            console.log(`[StepsTab] Processing step ID ${step.id}, order: ${step.order}`);
-            
-            addStoreStep({
-              id: step.id,
-              number: step.order,
-              timestamp: step.timestamp,
-              screenshotPath: step.screenshotPath,
-              mousePosition: step.mousePosition || { x: 0, y: 0 },
-              windowTitle: step.windowTitle || '',
-              description: step.actionText,
-              keyboardShortcut: step.keyboardShortcut
-            });
+        // Process steps for display
+        const displaySteps = steps.map((step, index) => {
+          // Parse actionText for title and description
+          let title = `Step ${index + 1}`;
+          let description = '';
+          
+          if (step.actionText) {
+            // Check if actionText has our title/description format
+            const titleMatch = step.actionText.match(/^\[TITLE\](.*?)(\[DESC\]|$)/s);
+            if (titleMatch && titleMatch[1].trim()) {
+              title = titleMatch[1].trim();
+              
+              // Check for description part
+              const descMatch = step.actionText.match(/\[DESC\](.*?)$/s);
+              if (descMatch && descMatch[1].trim()) {
+                description = descMatch[1].trim();
+              }
+            } else {
+              // No formatted title found, use actionText as description
+              description = step.actionText;
+            }
           }
+          
+          return {
+            displayId: index + 1,
+            originalId: step.id || `step_${Date.now()}_${index}`,
+            title: title,
+            description: description,
+            screenshotPath: step.screenshotPath
+          };
         });
         
-        console.log(`[StepsTab] Added ${stepIdsLoaded.length} steps to store: ${stepIdsLoaded.join(', ')}`);
+        // Set all steps in one batch
+        setStoreSteps(displaySteps);
+        
+        console.log(`[StepsTab] Added ${displaySteps.length} steps to store`);
+        
+        // Count shapes already in store
+        let totalShapesInStore = 0;
+        Object.keys(useStepsStore.getState().imageShapeData).forEach(path => {
+          totalShapesInStore += useStepsStore.getState().imageShapeData[path]?.length || 0;
+        });
+        console.log(`[StepsTab] Current shapes in store before loading: ${totalShapesInStore}`);
+        
+        // Load screenshots and shapes for all steps
+        const shapeLoadPromises = steps.map(async (step) => {
+          if (step.screenshotPath) {
+            // Load screenshot
+            loadImageAsDataUrl(step.screenshotPath);
+            
+            try {
+              console.log(`[StepsTab] Loading shapes for image: ${step.screenshotPath} and step: ${step.id}`);
+              // Load shapes from database with step ID to filter by specific step
+              const dbShapes = await window.electronAPI.getShapesByImage(step.screenshotPath, step.id);
+              
+              // Also load shapes from JSON file if available
+              let jsonShapes: any[] = [];
+              try {
+                jsonShapes = await window.electronAPI.loadShapesFromJson(step.screenshotPath);
+                console.log(`[StepsTab] Loaded ${jsonShapes.length} shapes from JSON file for: ${step.screenshotPath}`);
+              } catch (jsonError) {
+                console.error(`[StepsTab] Error loading shapes from JSON:`, jsonError);
+              }
+              
+              // Combine shapes from both sources
+              const combinedShapes = [...dbShapes];
+              
+              // Add JSON shapes if not already in database shapes (avoid duplicates)
+              if (jsonShapes && jsonShapes.length > 0) {
+                jsonShapes.forEach((jsonShape: any) => {
+                  const alreadyExists = dbShapes.some((dbShape: any) => 
+                    dbShape.id === jsonShape.id
+                  );
+                  
+                  if (!alreadyExists) {
+                    combinedShapes.push(jsonShape);
+                  }
+                });
+              }
+              
+              const totalShapes = combinedShapes.length;
+              console.log(`[StepsTab] Combined ${totalShapes} shapes (${dbShapes.length} from DB + ${jsonShapes.length} from JSON) for: ${step.screenshotPath}`);
+              
+              if (combinedShapes.length > 0 && step.id) {
+                console.log(`[StepsTab] First shape sample:`, JSON.stringify(combinedShapes[0]));
+                
+                // Convert to store format to ensure IDs are always strings
+                const storeShapes = combinedShapes.map((shape: any) => ({
+                  id: shape.id || `shape_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+                  type: shape.type,
+                  start: shape.start,
+                  end: shape.end,
+                  color: shape.color
+                }));
+                
+                // Save to memory store
+                saveShapesForImage(step.screenshotPath, storeShapes, step.id);
+                console.log(`[StepsTab] Saved ${storeShapes.length} shapes to memory store for image: ${step.screenshotPath}`);
+                
+                // Verify shapes were saved
+                const storedShapes = getShapesForImage(step.screenshotPath, step.id);
+                console.log(`[StepsTab] Verified ${storedShapes.length} shapes in store for image: ${step.screenshotPath}`);
+                
+                return storedShapes.length;
+              } else {
+                console.log(`[StepsTab] No shapes found for image: ${step.screenshotPath}${step.id ? ` and step: ${step.id}` : ''}`);
+                return 0;
+              }
+            } catch (error) {
+              console.error(`[StepsTab] Error loading shapes for ${step.screenshotPath}:`, error);
+              return 0;
+            }
+          }
+          return 0;
+        });
+        
+        // Wait for all shapes to be loaded
+        const shapeCounts = await Promise.all(shapeLoadPromises);
+        const totalShapes = shapeCounts.reduce((sum, count) => sum + count, 0);
+        console.log(`[StepsTab] Loaded a total of ${totalShapes} shapes for ${steps.length} steps`);
+        
+        // Count shapes now in store
+        let newTotalShapesInStore = 0;
+        Object.keys(useStepsStore.getState().imageShapeData).forEach(path => {
+          newTotalShapesInStore += useStepsStore.getState().imageShapeData[path]?.length || 0;
+        });
+        console.log(`[StepsTab] Current shapes in store after loading: ${newTotalShapesInStore}`);
       } else {
         console.log(`[StepsTab] No steps found for tutorial ${tutorialId}`);
       }
       
-      // Load screenshots for all steps 
-      steps.forEach(step => {
-        if (step.screenshotPath) {
-          console.log(`[StepsTab] Loading screenshot for step ${step.id}: ${step.screenshotPath}`);
-          loadImageAsDataUrl(step.screenshotPath);
-        }
-      });
-      
-      // Force a state update to ensure UI refreshes
-      setTimeout(() => {
-        const currentStepsInStore = useStepsStore.getState().steps;
-        console.log(`[StepsTab] Current steps in store after loading: ${currentStepsInStore.length}`);
-        if (currentStepsInStore.length === 0 && steps.length > 0) {
-          console.warn('[StepsTab] Steps were loaded but not showing in store, attempting force update');
-          // Attempt to force refresh the store
-          const displaySteps = steps
-            .filter(step => !!step.id) // Only include steps that have an ID
-            .map((step, index) => ({
-              displayId: index + 1,
-              originalId: step.id as string, // Type assertion since we filtered for non-null IDs
-              title: `Step ${index + 1}`,
-              description: step.actionText || '',
-              screenshotPath: step.screenshotPath
-            }));
-          setStoreSteps(displaySteps);
-        }
-      }, 100);
+      console.log(`[StepsTab] ===== FINISHED LOADING STEPS FOR TUTORIAL: ${tutorialId} =====`);
     } catch (error) {
       console.error('[StepsTab] Error loading steps:', error);
       setLoadError('Failed to load steps. Please try again.');
@@ -1432,132 +1646,284 @@ export const StepsTab: React.FC<StepsTabProps> = ({ tutorialId }) => {
     }
   };
 
-  useEffect(() => {
-    console.log('[StepsTab] Component mounted. Setting up listeners...');
-
-    const handleStepCreated = (newStep: RecordingStep) => {
-      console.log('[StepsTab] Received step:created, adding to store:', newStep);
-      addStoreStep(newStep);
-      
-      // If the step has a screenshot, load it as a data URL
-      if (newStep.screenshotPath) {
-        loadImageAsDataUrl(newStep.screenshotPath);
-      }
-    };
-
-    const removeStepListener = window.electronAPI?.onStepCreated(handleStepCreated);
-
-    // Load any existing screenshots
-    steps.forEach(step => {
-      if (step.screenshotPath && !imageCache[step.screenshotPath]) {
-        loadImageAsDataUrl(step.screenshotPath);
-      }
-    });
-
-    return () => {
-      console.log('[StepsTab] Component unmounting. Removing listeners...');
-      removeStepListener?.();
-    };
-  }, [addStoreStep, steps, imageCache]);
-
-  const moveStep = useCallback((fromIndex: number, toIndex: number) => {
-    const newSteps = [...steps];
-    const [movedStep] = newSteps.splice(fromIndex, 1);
-    newSteps.splice(toIndex, 0, movedStep);
-    setStoreSteps(newSteps);
-  }, [steps, setStoreSteps]);
-
-  const handleStepUpdate = useCallback((originalId: string, field: 'title' | 'description', value: string) => {
-    updateStoreStep(originalId, { [field]: value });
-  }, [updateStoreStep]);
-
-  const addStep = useCallback(() => {
-    // Create a truly unique ID for manual steps
-    const uniqueId = `manual_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    
-    const manualStepData: RecordingStep = {
-        id: uniqueId,
-        number: steps.length + 1,
-        timestamp: new Date().toISOString(),
-        screenshotPath: '',
-        mousePosition: { x: 0, y: 0 },
-        windowTitle: '',
-        description: 'Manually added step'
-    };
-    addStoreStep(manualStepData);
-    
-    // Automatically select the newly added step
-    setTimeout(() => {
-      setSelectedStepId(uniqueId);
-    }, 100);
-  }, [addStoreStep, steps.length]);
-
-  const deleteStep = useCallback((originalId: string) => {
-    deleteStoreStep(originalId);
-    // If the deleted step was selected, clear the selection
-    if (selectedStepId === originalId) {
-      setSelectedStepId(null);
-    }
-  }, [deleteStoreStep, selectedStepId]);
-
-  const openImageModal = useCallback((imagePath: string) => {
-    setModalImage(imageCache[imagePath]);
-  }, [imageCache]);
-
-  const closeImageModal = useCallback(() => {
-    setModalImage(null);
-  }, []);
-
-  const handleChangeImage = useCallback(async (stepId: string) => {
-    try {
-      // Open file dialog to select an image
-      const result = await window.electronAPI.openFileDialog({
-        title: 'Select Image',
-        filters: [
-          { name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'gif'] }
-        ],
-        properties: ['openFile']
-      });
-      
-      if (result.canceled || result.filePaths.length === 0) {
-        return;
-      }
-      
-      const sourcePath = result.filePaths[0];
-      
-      // Make a copy of the image
-      const newImagePath = await window.electronAPI.copyImageFile({
-        sourcePath,
-        tutorialId: tutorialId || '',
-        stepId: stepId,
-        makeBackup: true
-      });
-      
-      if (!newImagePath) {
-        console.error('Failed to copy image file');
-        return;
-      }
-      
-      // Update the step with the new image path
-      updateStoreStep(stepId, { screenshotPath: newImagePath });
-      
-      // Load the new image into cache
-      loadImageAsDataUrl(newImagePath);
-      
-    } catch (error) {
-      console.error('Error changing image:', error);
-    }
-  }, [tutorialId, updateStoreStep, loadImageAsDataUrl]);
-
   // Get the currently selected step
   const selectedStep = steps.find(step => step.originalId === selectedStepId);
 
-  // Helper function to safely open the image modal
+  // Image modal functions
+  const openImageModal = (imagePath: string | undefined) => {
+    if (!imagePath) return;
+    setModalImage(imagePath);
+  };
+
+  const closeImageModal = () => {
+    setModalImage(null);
+  };
+
   const handleOpenImage = useCallback((screenshotPath: string | undefined) => {
     if (screenshotPath && imageCache[screenshotPath]) {
       openImageModal(screenshotPath);
     }
-  }, [imageCache, openImageModal]);
+  }, [imageCache]);
+
+  // Missing step management functions
+  const addStep = async () => {
+    if (!tutorialId) {
+      alert('Please select a tutorial first');
+      return;
+    }
+    
+    try {
+      const stepNumber = steps.length + 1;
+      const defaultTitle = `Step ${stepNumber}`;
+      
+      // Create a new step with default values
+      const newStep = {
+        tutorialId,
+        order: stepNumber,
+        screenshotPath: '',
+        actionText: `[TITLE]${defaultTitle}[DESC]`,
+        timestamp: new Date().toISOString(),
+      };
+      
+      // Save to database
+      const savedStep = await window.electronAPI.saveStep(newStep);
+      
+      // Update local store - RecordingStep format for store
+      addStoreStep({
+        id: savedStep.id || '',
+        number: savedStep.order,
+        timestamp: savedStep.timestamp,
+        screenshotPath: savedStep.screenshotPath,
+        mousePosition: savedStep.mousePosition || { x: 0, y: 0 },
+        windowTitle: savedStep.windowTitle || '',
+        description: '',
+        keyboardShortcut: savedStep.keyboardShortcut,
+        // Note: The title will be handled by the store state mapping
+      });
+      
+      // Select the new step
+      if (savedStep.id) {
+        setSelectedStepId(savedStep.id);
+      }
+    } catch (error) {
+      console.error('Error adding step:', error);
+      alert('Failed to add step');
+    }
+  };
+
+  const moveStep = async (fromIndex: number, toIndex: number) => {
+    try {
+      // Get steps to reorder
+      const reorderedSteps = [...steps];
+      const stepToMove = reorderedSteps[fromIndex];
+      
+      // Remove from current position and insert at new position
+      reorderedSteps.splice(fromIndex, 1);
+      reorderedSteps.splice(toIndex, 0, stepToMove);
+      
+      // Update order property
+      const updatedSteps = reorderedSteps.map((step, idx) => ({
+        id: step.originalId,
+        order: idx + 1
+      }));
+      
+      // Save to database
+      await window.electronAPI.reorderSteps(updatedSteps);
+      
+      // Reload steps to refresh order
+      if (tutorialId) {
+        loadStepsForTutorial(tutorialId);
+      }
+    } catch (error) {
+      console.error('Error reordering steps:', error);
+      alert('Failed to reorder steps');
+    }
+  };
+
+  const deleteStep = async (stepId: string) => {
+    if (!stepId) return;
+    
+    try {
+      // Confirm deletion
+      if (!confirm('Are you sure you want to delete this step?')) {
+        return;
+      }
+      
+      // Delete from database
+      await window.electronAPI.deleteStep(stepId);
+      
+      // Delete from store
+      deleteStoreStep(stepId);
+      
+      // Clear selection if deleted
+      if (selectedStepId === stepId) {
+        setSelectedStepId(null);
+      }
+    } catch (error) {
+      console.error('Error deleting step:', error);
+      alert('Failed to delete step');
+    }
+  };
+
+  const handleStepUpdate = async (stepId: string, field: string, value: string) => {
+    try {
+      // Find step in store
+      const step = steps.find(s => s.originalId === stepId);
+      if (!step) return;
+      
+      // Create updated step for store
+      const updatedStoreStep = {
+        ...step
+      };
+      
+      // Update field based on type
+      if (field === 'title') {
+        updatedStoreStep.title = value;
+      } else if (field === 'description') {
+        updatedStoreStep.description = value;
+      }
+      
+      // Update store
+      updateStoreStep(stepId, updatedStoreStep);
+      
+      // Format actionText to include title and description
+      let actionText = '';
+      
+      if (field === 'title') {
+        // Update title but keep existing description
+        actionText = `[TITLE]${value}`;
+        if (step.description) {
+          actionText += `[DESC]${step.description}`;
+        }
+      } else if (field === 'description') {
+        // Update description but keep existing title
+        actionText = `[TITLE]${step.title || `Step ${step.displayId}`}[DESC]${value}`;
+      } else {
+        // No changes to title/description fields
+        actionText = `[TITLE]${step.title || `Step ${step.displayId}`}`;
+        if (step.description) {
+          actionText += `[DESC]${step.description}`;
+        }
+      }
+      
+      // Create step for database save
+      const stepToSave = {
+        id: stepId,
+        tutorialId: tutorialId || '',
+        order: step.displayId,
+        screenshotPath: step.screenshotPath || '',
+        actionText: actionText,
+        timestamp: new Date().toISOString(), // Use current time as we don't have original timestamp
+        windowTitle: ''
+      };
+      
+      // Save to database
+      await window.electronAPI.updateStep(stepToSave);
+    } catch (error) {
+      console.error('Error updating step:', error);
+    }
+  };
+
+  const handleChangeImage = async (stepId: string) => {
+    try {
+      // Open file dialog
+      const result = await window.electronAPI.openFileDialog({
+        title: 'Select Screenshot',
+        filters: [
+          { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif'] }
+        ],
+        properties: ['openFile']
+      });
+      
+      if (result.canceled || !result.filePaths.length) return;
+      
+      const filePath = result.filePaths[0];
+      if (!filePath) return;
+      
+      // Find step
+      const step = steps.find(s => s.originalId === stepId);
+      if (!step || !tutorialId) return;
+      
+      // Copy file to project directory
+      const newPath = await window.electronAPI.copyImageFile({
+        sourcePath: filePath,
+        tutorialId,
+        stepId,
+        makeBackup: true
+      });
+      
+      // Create database step
+      const stepToSave = {
+        id: stepId,
+        tutorialId,
+        order: step.displayId,
+        screenshotPath: newPath,
+        actionText: step.description || '',
+        timestamp: new Date().toISOString(),
+        windowTitle: ''
+      };
+      
+      // Save to database
+      await window.electronAPI.updateStep(stepToSave);
+      
+      // Update store
+      updateStoreStep(stepId, {
+        ...step,
+        screenshotPath: newPath
+      });
+      
+      // Load image
+      loadImageAsDataUrl(newPath);
+    } catch (error) {
+      console.error('Error changing image:', error);
+      alert('Failed to change image');
+    }
+  };
+
+  // Listen for step recorded notifications to refresh steps
+  useEffect(() => {
+    if (!tutorialId) return;
+    
+    console.log(`[StepsTab] Setting up step recorded notification listener for tutorial ${tutorialId}`);
+    
+    const handleStepRecorded = (step: any) => {
+      console.log(`[StepsTab] Received step recorded notification`, step);
+      // Reload steps to ensure UI is up to date
+      loadStepsForTutorial(tutorialId);
+    };
+    
+    const removeListener = window.electronAPI?.onStepCreated(handleStepRecorded);
+    
+    return () => {
+      console.log(`[StepsTab] Removing step recorded notification listener`);
+      removeListener?.();
+    };
+  }, [tutorialId]);
+
+  // Process realtime steps when they come in
+  useEffect(() => {
+    if (!realtimeSteps.length) return;
+    
+    console.log(`[StepsTab] Received ${realtimeSteps.length} realtime steps`);
+    
+    // Only process and add new steps
+    realtimeSteps.forEach(step => {
+      // Convert to DisplayStep format and add to store if not already there
+      addStepToStore(step);
+    });
+  }, [realtimeSteps]);
+  
+  // Helper to add a step to the store
+  const addStepToStore = (step: any) => {
+    if (!step || !step.id) return;
+    
+    // Check if we already have this step in the store
+    const exists = steps.some(s => s.originalId === step.id);
+    if (!exists) {
+      console.log(`[StepsTab] Adding realtime step ${step.id} to store`);
+      addStoreStep(step);
+    }
+  };
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
@@ -1576,10 +1942,7 @@ export const StepsTab: React.FC<StepsTabProps> = ({ tutorialId }) => {
       <div className="flex flex-1 min-h-0"> {/* min-h-0 allows flex-1 to work properly on children */}
         {/* Left column - steps list */}
         <div className="w-1/3 border-r border-gray-200 flex flex-col min-h-0"> {/* min-h-0 is crucial here */}
-          {/* Fixed header for left column */}
-          <div className="p-4 border-b border-gray-200 bg-white flex-shrink-0">
-            <p className="text-sm text-gray-600">Customize your documentation steps by editing content and adding annotations.</p>
-          </div>
+          {/* Removed the fixed header for left column */}
           
           {/* Scrollable steps list */}
           <div className="overflow-y-auto flex-1 bg-gray-50">
@@ -1673,16 +2036,35 @@ export const StepsTab: React.FC<StepsTabProps> = ({ tutorialId }) => {
                     </div>
                     
                     {/* Step badge indicators */}
-                    {selectedStep?.screenshotPath && getShapesForImage(selectedStep.screenshotPath)?.length > 0 && selectedStep.originalId === step.originalId && (
-                      <div className="px-3 pb-2 flex gap-1">
-                        <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                          <svg className="mr-1 h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M4 2a2 2 0 00-2 2v11a3 3 0 106 0V4a2 2 0 00-2-2H4zm1 14a1 1 0 100-2 1 1 0 000 2zm5-1.757l4.9-4.9a2 2 0 000-2.828L13.485 5.1a2 2 0 00-2.828 0L10 5.757v8.486zM16 18H9.071l6-6H16a2 2 0 012 2v2a2 2 0 01-2 2z" clipRule="evenodd" />
-                          </svg>
-                          {getShapesForImage(step.screenshotPath || '').length} markup
-                        </span>
+                    {selectedStep?.screenshotPath && getShapesForImage(selectedStep.screenshotPath, selectedStep.originalId)?.length > 0 && selectedStep.originalId === step.originalId && (
+                      <div className="absolute bottom-0 right-0 bg-white/70 text-xs text-gray-700 px-1 rounded">
+                        <span role="img" aria-label="Markup">✏️</span>
+                        {getShapesForImage(step.screenshotPath || '', step.originalId).length} markup
                       </div>
                     )}
+                    <div className="absolute top-2 right-2 z-10">
+                      <button
+                        type="button"
+                        className="text-gray-500 hover:text-gray-700 bg-white hover:bg-gray-100 rounded-full p-1 shadow flex items-center justify-center"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setSelectedStepId(step.originalId);
+                          if (step.screenshotPath) {
+                            openMarkupModal(step.screenshotPath, step.originalId);
+                          }
+                        }}
+                      >
+                        <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                          <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                        </svg>
+                        {getShapesForImage(step.screenshotPath || '', step.originalId).length > 0 && (
+                          <span className="absolute top-0 right-0 -mt-1 -mr-1 px-1.5 py-0.5 text-xs bg-blue-500 text-white rounded-full">
+                            {getShapesForImage(step.screenshotPath || '', step.originalId).length}
+                          </span>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1696,23 +2078,35 @@ export const StepsTab: React.FC<StepsTabProps> = ({ tutorialId }) => {
             {selectedStep ? (
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
                 {/* Step editor header */}
-                <div className="p-4 bg-gray-50 border-b border-gray-200">
-                  <h2 className="font-medium text-gray-900">Editing Step {selectedStep.displayId}</h2>
+                <div className="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
+                  <div className="flex items-center space-x-2">
+                    <h2 className="font-medium text-gray-900 flex items-center">
+                      <span className="flex h-6 w-6 bg-blue-500 text-white rounded-full items-center justify-center text-xs mr-2">
+                        {selectedStep.displayId}
+                      </span>
+                      <input 
+                        type="text" 
+                        value={selectedStep.title || `Step ${selectedStep.displayId}`}
+                        onChange={(e) => handleStepUpdate(selectedStep.originalId, 'title', e.target.value)}
+                        className="px-2 py-1 bg-transparent hover:bg-gray-100 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 border border-transparent focus:border-blue-500 rounded text-lg font-medium text-gray-900 min-w-[200px]"
+                        placeholder={`Step ${selectedStep.displayId}`}
+                      />
+                    </h2>
+                  </div>
+                  <button
+                    onClick={() => deleteStep(selectedStep.originalId)}
+                    className="px-4 py-2 bg-red-500 text-white rounded-md text-sm font-medium hover:bg-red-600 flex items-center gap-1"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Delete Step
+                  </button>
                 </div>
                 
                 {/* Step editor content */}
                 <div className="p-6 space-y-6">
-                  {/* Step Title */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Step Title</label>
-                    <input
-                      type="text"
-                      value={selectedStep.title}
-                      onChange={(e) => handleStepUpdate(selectedStep.originalId, 'title', e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="Enter a title for this step"
-                    />
-                  </div>
+                  {/* Remove Step Title field - it's now in the header */}
                   
                   {/* Step Description */}
                   <div>
@@ -1720,7 +2114,7 @@ export const StepsTab: React.FC<StepsTabProps> = ({ tutorialId }) => {
                     <textarea
                       value={selectedStep.description || ''}
                       onChange={(e) => handleStepUpdate(selectedStep.originalId, 'description', e.target.value)}
-                      rows={4}
+                      rows={3}
                       className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder="Describe what happens in this step"
                     />
@@ -1741,7 +2135,7 @@ export const StepsTab: React.FC<StepsTabProps> = ({ tutorialId }) => {
                           Change
                         </button>
                         <button 
-                          onClick={() => selectedStep?.screenshotPath && openMarkupModal(selectedStep.screenshotPath)}
+                          onClick={() => selectedStep?.screenshotPath && openMarkupModal(selectedStep.screenshotPath, selectedStep.originalId)}
                           className="px-3 py-1 text-sm bg-white border border-gray-300 rounded-md hover:bg-gray-50 flex items-center gap-1 text-gray-700 relative"
                           disabled={!selectedStep?.screenshotPath || !imageCache[selectedStep?.screenshotPath || '']}
                         >
@@ -1766,12 +2160,20 @@ export const StepsTab: React.FC<StepsTabProps> = ({ tutorialId }) => {
                     <div className="mt-2 border border-gray-200 rounded-lg overflow-hidden shadow-sm">
                       {selectedStep.screenshotPath && imageCache[selectedStep.screenshotPath] ? (
                         <div className="relative bg-gray-50 flex items-center justify-center">
-                          <PreviewCanvas
-                            imageUrl={imageCache[selectedStep.screenshotPath]}
-                            shapes={getShapesForImage(selectedStep.screenshotPath) || []}
-                            width={800}
-                            height={450}
-                          />
+                          {// Add console.log here
+                            (() => {
+                              const shapesForPreview = selectedStep?.screenshotPath && selectedStep?.originalId ? getShapesForImage(selectedStep.screenshotPath, selectedStep.originalId) : [];
+                              console.log(`[StepsTab] PreviewCanvas for selectedStep: ${selectedStep?.originalId}, imagePath: ${selectedStep?.screenshotPath}, shapes:`, JSON.parse(JSON.stringify(shapesForPreview)));
+                              return (
+                                <PreviewCanvas
+                                  imageUrl={imageCache[selectedStep.screenshotPath]}
+                                  shapes={shapesForPreview}
+                                  width={800}
+                                  height={450}
+                                />
+                              );
+                            })()
+                          }
                         </div>
                       ) : selectedStep.screenshotPath ? (
                         <div className="w-full aspect-video flex items-center justify-center bg-gray-50">
@@ -1797,19 +2199,8 @@ export const StepsTab: React.FC<StepsTabProps> = ({ tutorialId }) => {
                 </div>
                 
                 {/* Footer with actions */}
-                <div className="p-4 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
-                  <div className="text-xs text-gray-500">
-                    Step ID: {selectedStep.originalId.substring(0, 8)}...
-                  </div>
-                  <button
-                    onClick={() => deleteStep(selectedStep.originalId)}
-                    className="px-4 py-2 bg-red-500 text-white rounded-md text-sm font-medium hover:bg-red-600 flex items-center gap-1"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                    Delete Step
-                  </button>
+                <div className="p-4 bg-gray-50 border-t border-gray-200">
+                  {/* Footer content can be added here if needed */}
                 </div>
               </div>
             ) : (

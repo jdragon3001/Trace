@@ -4,6 +4,7 @@ import path from 'path';
 import { IpcChannels } from '../../shared/constants';
 import { DatabaseService, Project, Tutorial, Step } from './DatabaseService';
 import { MigrationService } from './MigrationService';
+import { ShapeRepository } from '../repositories/ShapeRepository';
 
 export class ProjectService {
   private static instance: ProjectService;
@@ -174,6 +175,34 @@ export class ProjectService {
     ipcMain.handle(IpcChannels.REORDER_STEPS, (_event, steps: Pick<Step, 'id' | 'order'>[]) => {
       this.databaseService.updateStepsOrder(steps);
       return true;
+    });
+
+    // Shape data handlers
+    ipcMain.handle(IpcChannels.SAVE_SHAPES, async (_event, stepId: string, imagePath: string, shapes: any[]) => {
+      try {
+        return await this.saveShapesForImage(stepId, imagePath, shapes);
+      } catch (error) {
+        console.error('[ProjectService] Error in SAVE_SHAPES handler:', error);
+        throw error;
+      }
+    });
+    
+    ipcMain.handle(IpcChannels.GET_SHAPES_BY_IMAGE, async (_event, imagePath: string, stepId?: string) => {
+      try {
+        return await this.getShapesByImagePath(imagePath, stepId);
+      } catch (error) {
+        console.error('[ProjectService] Error in GET_SHAPES_BY_IMAGE handler:', error);
+        return [];
+      }
+    });
+    
+    ipcMain.handle(IpcChannels.GET_SHAPES_BY_STEP, async (_event, stepId: string) => {
+      try {
+        return await this.getShapesByStepId(stepId);
+      } catch (error) {
+        console.error('[ProjectService] Error in GET_SHAPES_BY_STEP handler:', error);
+        return [];
+      }
     });
 
     // Get current project and tutorial
@@ -398,6 +427,89 @@ export class ProjectService {
    */
   public getDatabaseService(): DatabaseService {
     return this.databaseService;
+  }
+
+  /**
+   * Save shapes for a specific image
+   * @param stepId ID of the step
+   * @param imagePath Path to the image
+   * @param shapes Array of shape data
+   * @returns The saved shapes with IDs
+   */
+  private async saveShapesForImage(stepId: string, imagePath: string, shapes: any[]): Promise<any[]> {
+    try {
+      console.log(`[ProjectService] Saving ${shapes.length} shapes for image: ${imagePath}, step: ${stepId}`);
+      
+      if (!stepId) {
+        console.error('[ProjectService] Cannot save shapes: Missing stepId');
+        throw new Error('Missing stepId when saving shapes');
+      }
+      
+      if (!imagePath) {
+        console.error('[ProjectService] Cannot save shapes: Missing imagePath');
+        throw new Error('Missing imagePath when saving shapes');
+      }
+      
+      // Delegate to the database service
+      const savedShapes = await this.databaseService.saveShapes(stepId, imagePath, shapes);
+      
+      console.log(`[ProjectService] Successfully saved ${savedShapes.length} shapes`);
+      return savedShapes;
+    } catch (error) {
+      console.error('[ProjectService] Error saving shapes:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Get shapes for a specific image
+   * @param imagePath Path to the image
+   * @param stepId Optional step ID to filter shapes by
+   * @returns Array of shapes for the image
+   */
+  private async getShapesByImagePath(imagePath: string, stepId?: string): Promise<any[]> {
+    try {
+      console.log(`[ProjectService] Getting shapes for image: ${imagePath}${stepId ? ` and step: ${stepId}` : ''}`);
+      
+      if (!imagePath) {
+        console.error('[ProjectService] Cannot get shapes: Missing imagePath');
+        return [];
+      }
+      
+      // Delegate to the database service
+      const shapes = await this.databaseService.getShapesByImage(imagePath, stepId);
+      
+      console.log(`[ProjectService] Found ${shapes.length} shapes for image: ${imagePath}${stepId ? ` and step: ${stepId}` : ''}`);
+      return shapes;
+    } catch (error) {
+      console.error('[ProjectService] Error getting shapes by image path:', error);
+      return [];
+    }
+  }
+  
+  /**
+   * Get shapes for a specific step
+   * @param stepId ID of the step
+   * @returns Array of shapes for the step
+   */
+  private async getShapesByStepId(stepId: string): Promise<any[]> {
+    try {
+      console.log(`[ProjectService] Getting shapes for step: ${stepId}`);
+      
+      if (!stepId) {
+        console.error('[ProjectService] Cannot get shapes: Missing stepId');
+        return [];
+      }
+      
+      // Delegate to the database service
+      const shapes = await this.databaseService.getShapesByStep(stepId);
+      
+      console.log(`[ProjectService] Found ${shapes.length} shapes for step: ${stepId}`);
+      return shapes;
+    } catch (error) {
+      console.error('[ProjectService] Error getting shapes by step ID:', error);
+      return [];
+    }
   }
 }
 

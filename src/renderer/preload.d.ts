@@ -1,5 +1,5 @@
 import { IpcChannels } from '../shared/constants';
-import { RecordingStep, Project, Tutorial, Step } from '../shared/types';
+import { RecordingStep, Project, Tutorial, Step, ShapeData } from '../shared/types';
 
 declare global {
   interface Window {
@@ -39,6 +39,11 @@ declare global {
       deleteStep: (stepId: string) => Promise<boolean>;
       reorderSteps: (steps: Pick<Step, 'id' | 'order'>[]) => Promise<boolean>;
       
+      // Shape Management
+      saveShapes: (stepId: string, imagePath: string, shapes: ShapeData[]) => Promise<ShapeData[]>;
+      getShapesByImage: (imagePath: string, stepId?: string) => Promise<ShapeData[]>;
+      getShapesByStep: (stepId: string) => Promise<ShapeData[]>;
+      
       // State Management
       getCurrentProject: () => Promise<Project | null>;
       getCurrentTutorial: () => Promise<Tutorial | null>;
@@ -56,7 +61,7 @@ declare global {
         includeStepNumbers: boolean;
         exportFormat: 'PDF' | 'DOCX';
       }) => Promise<string>;
-      exportPrepareShapes: (tutorialId: string, shapeData: Record<string, Array<any>>) => Promise<boolean>;
+      prepareShapesForExport: (tutorialId: string, shapeData: Record<string, Array<any>>) => Promise<boolean>;
       loadImageAsDataUrl: (imagePath: string) => Promise<string>;
       
       // File operations
@@ -78,6 +83,12 @@ declare global {
         dataUrl: string;
         fileType: string;
       }) => Promise<string>;
+
+      // Assets API
+      getAssetsByTutorial: (tutorialId: string) => Promise<any[]>;
+
+      // Load shapes from JSON files
+      loadShapesFromJson: (imagePath: string) => Promise<any[]>;
     };
     systemPreferences: {
       getMediaAccessStatus: (mediaType: string) => Promise<string>;

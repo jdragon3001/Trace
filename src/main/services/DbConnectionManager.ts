@@ -218,6 +218,19 @@ export class DbConnectionManager {
           createdAt TEXT NOT NULL,
           FOREIGN KEY (tutorialId) REFERENCES tutorials(id) ON DELETE CASCADE
         );
+        
+        CREATE TABLE IF NOT EXISTS shapes (
+          id TEXT PRIMARY KEY,
+          stepId TEXT NOT NULL,
+          imagePath TEXT NOT NULL,
+          type TEXT NOT NULL,
+          startX REAL NOT NULL,
+          startY REAL NOT NULL,
+          endX REAL NOT NULL,
+          endY REAL NOT NULL,
+          color TEXT NOT NULL,
+          FOREIGN KEY (stepId) REFERENCES steps(id) ON DELETE CASCADE
+        );
       `);
       
       // Create indexes for performance
@@ -226,6 +239,8 @@ export class DbConnectionManager {
         CREATE INDEX IF NOT EXISTS idx_steps_tutorialId ON steps(tutorialId);
         CREATE INDEX IF NOT EXISTS idx_steps_order ON steps("order");
         CREATE INDEX IF NOT EXISTS idx_assets_tutorialId ON assets(tutorialId);
+        CREATE INDEX IF NOT EXISTS idx_shapes_stepId ON shapes(stepId);
+        CREATE INDEX IF NOT EXISTS idx_shapes_imagePath ON shapes(imagePath);
       `);
       
       console.log('[DbConnectionManager] Database tables and indexes created successfully');
@@ -258,6 +273,71 @@ export class DbConnectionManager {
         ok: false,
         issues: [`Error running integrity check: ${error.message}`]
       };
+    }
+  }
+
+  /**
+   * Get the database file path
+   * @returns The path to the database file
+   */
+  public getDbPath(): string {
+    return this.dbPath;
+  }
+
+  /**
+   * Check if the shapes table exists and create it if not
+   */
+  public async checkShapesTable(): Promise<void> {
+    await this.ensureInitialized();
+    if (!this.db) {
+      throw new Error('Database is not initialized');
+    }
+    
+    try {
+      // Check if the shapes table exists
+      const tableExists = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='shapes'").get() as { name: string } | undefined;
+      console.log(`[DbConnectionManager] Shapes table exists: ${!!tableExists}`);
+      
+      if (!tableExists) {
+        console.log('[DbConnectionManager] Creating shapes table...');
+        
+        // Create shapes table
+        this.db.exec(`
+          CREATE TABLE IF NOT EXISTS shapes (
+            id TEXT PRIMARY KEY,
+            stepId TEXT NOT NULL,
+            imagePath TEXT NOT NULL,
+            type TEXT NOT NULL,
+            startX REAL NOT NULL,
+            startY REAL NOT NULL,
+            endX REAL NOT NULL,
+            endY REAL NOT NULL,
+            color TEXT NOT NULL
+          );
+          
+          CREATE INDEX IF NOT EXISTS idx_shapes_stepId ON shapes(stepId);
+          CREATE INDEX IF NOT EXISTS idx_shapes_imagePath ON shapes(imagePath);
+        `);
+        
+        console.log('[DbConnectionManager] Shapes table created successfully');
+      } else {
+        // Check table structure
+        const tableInfo = this.db.prepare("PRAGMA table_info(shapes)").all() as Array<{ name: string, type: string }>;
+        console.log(`[DbConnectionManager] Shapes table structure:`, JSON.stringify(tableInfo));
+        
+        // Check if the table has the required columns
+        const requiredColumns = ['id', 'stepId', 'imagePath', 'type', 'startX', 'startY', 'endX', 'endY', 'color'];
+        const missingColumns = requiredColumns.filter(col => !tableInfo.find(info => info.name === col));
+        
+        if (missingColumns.length > 0) {
+          console.error(`[DbConnectionManager] Shapes table is missing columns: ${missingColumns.join(', ')}`);
+        } else {
+          console.log('[DbConnectionManager] Shapes table structure is valid');
+        }
+      }
+    } catch (error) {
+      console.error('[DbConnectionManager] Error checking shapes table:', error);
+      throw error;
     }
   }
 } 

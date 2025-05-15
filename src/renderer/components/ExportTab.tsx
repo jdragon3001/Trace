@@ -227,16 +227,21 @@ export const ExportTab: React.FC<ExportTabProps> = ({ tutorialId }) => {
     setExportResult(null);
     
     try {
-      // Prepare shape data for export - we need to get this from the StepsTab
-      // The best approach is to use a custom event to request the shape data from StepsTab
-      const shapeDataEvent = new CustomEvent('request-shape-data', {
-        detail: { tutorialId },
-        bubbles: true,
-        cancelable: true
+      // Explicitly send shape data to main process
+      console.log(`[ExportTab] Sending markup data to main process. Keys: ${Object.keys(imageShapeData).length}`);
+      
+      // Verify we have shapes to send
+      let totalShapes = 0;
+      Object.values(imageShapeData).forEach(shapes => {
+        if (Array.isArray(shapes)) {
+          totalShapes += shapes.length;
+        }
       });
-      document.dispatchEvent(shapeDataEvent);
-
-      // Wait for the shape data to be sent to the main process (handled by StepsTab)
+      
+      console.log(`[ExportTab] Total shapes to send: ${totalShapes}`);
+      
+      // Send the shape data to the main process
+      await window.electronAPI.prepareShapesForExport(tutorialId, imageShapeData);
       
       // Call export service via IPC
       const options = {
@@ -289,8 +294,9 @@ export const ExportTab: React.FC<ExportTabProps> = ({ tutorialId }) => {
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         if (showMarkupInPreview) {
           let shapes: any[] = [];
-          if (step.screenshotPath && typeof step.screenshotPath === 'string' && imageShapeData && typeof imageShapeData === 'object' && imageShapeData[step.screenshotPath]) {
-            shapes = imageShapeData[step.screenshotPath];
+          if (step.screenshotPath && step.id && typeof step.screenshotPath === 'string' && imageShapeData && typeof imageShapeData === 'object') {
+            const key = `${step.id}:${step.screenshotPath}`;
+            shapes = imageShapeData[key] || [];
           }
           shapes.forEach(shape => {
             drawShape(ctx, shape.type, shape.start, shape.end, shape.color, false);
@@ -321,33 +327,36 @@ export const ExportTab: React.FC<ExportTabProps> = ({ tutorialId }) => {
               className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
             />
           </div>
-          <ToggleSwitch label="Include Screenshots" enabled={includeScreenshots} onChange={setIncludeScreenshots} />
-          <ToggleSwitch label="Include Step Numbers" enabled={includeStepNumbers} onChange={setIncludeStepNumbers} />
-          
-          {/* Show this section only if we have markup data */}
-          {hasMarkupAnnotations && (
-            <div className="border-t border-gray-200 pt-3 mt-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-700">Markup Annotations</span>
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                  Available
-                </span>
-              </div>
-              <p className="text-xs text-gray-500 mt-1">
-                Your markup annotations will be applied to screenshots during export.
-              </p>
-              <div className="mt-2">
-                <ToggleSwitch 
-                  label="Show markup in preview" 
-                  enabled={showMarkupInPreview} 
-                  onChange={setShowMarkupInPreview} 
-                />
+          {/* Hidden options - we'll keep these enabled but not visible */}
+          <div className="hidden">
+            <ToggleSwitch label="Include Screenshots" enabled={includeScreenshots} onChange={setIncludeScreenshots} />
+            <ToggleSwitch label="Include Step Numbers" enabled={includeStepNumbers} onChange={setIncludeStepNumbers} />
+            
+            {/* Markup section */}
+            {hasMarkupAnnotations && (
+              <div className="border-t border-gray-200 pt-3 mt-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700">Markup Annotations</span>
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    Available
+                  </span>
+                </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  (Preview markup is simulated and may differ from final export)
+                  Your markup annotations will be applied to screenshots during export.
                 </p>
+                <div className="mt-2">
+                  <ToggleSwitch 
+                    label="Show markup in preview" 
+                    enabled={showMarkupInPreview} 
+                    onChange={setShowMarkupInPreview} 
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    (Preview markup is simulated and may differ from final export)
+                  </p>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Export Format */} 
@@ -424,25 +433,35 @@ export const ExportTab: React.FC<ExportTabProps> = ({ tutorialId }) => {
             previewSteps.map((step, index) => (
               <div key={step.id} className="mb-4">
                 <div className="flex space-x-3">
-                  {includeStepNumbers && <span className="font-medium text-gray-700">{index + 1}</span>}
-                  <span className="text-gray-800">{step.actionText}</span>
+                  <span className="font-medium text-gray-700">{index + 1}</span>
+                  <span className="text-gray-800">
+                    {(() => {
+                      // Parse actionText for title
+                      let displayText = step.actionText || '';
+                      if (step.actionText) {
+                        const titleMatch = step.actionText.match(/^\[TITLE\](.*?)(\[DESC\]|$)/s);
+                        if (titleMatch && titleMatch[1].trim()) {
+                          displayText = titleMatch[1].trim();
+                        }
+                      }
+                      return displayText;
+                    })()}
+                  </span>
                 </div>
-                {includeScreenshots && (
-                  <div className="pl-6 py-2">
-                    {step.screenshotPath && step.id && imageDataUrls[String(step.id)] ? (
-                      <PreviewCanvas
-                        imageUrl={imageDataUrls[String(step.id)]}
-                        shapes={imageShapeData[step.screenshotPath || ''] || []}
-                        width={200}
-                        height={150}
-                      />
-                    ) : (
-                      <div className="w-full aspect-video bg-gray-100 border rounded flex items-center justify-center">
-                        <ImageIcon />
-                      </div>
-                    )}
-                  </div>
-                )}
+                <div className="pl-6 py-2">
+                  {step.screenshotPath && step.id && imageDataUrls[String(step.id)] ? (
+                    <PreviewCanvas
+                      imageUrl={imageDataUrls[String(step.id)]}
+                      shapes={step.id && step.screenshotPath ? (imageShapeData[`${step.id}:${step.screenshotPath}`] || []) : []}
+                      width={200}
+                      height={150}
+                    />
+                  ) : (
+                    <div className="w-full aspect-video bg-gray-100 border rounded flex items-center justify-center">
+                      <ImageIcon />
+                    </div>
+                  )}
+                </div>
               </div>
             ))
           )}

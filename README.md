@@ -109,6 +109,13 @@ This will generate platform-specific packages in the `out` directory.
 
 ## Recent Updates
 
+### Shape Markup Persistence Fix (2024-08-14)
+- Fixed issue with shape markup not persisting when closing/reopening the app
+- Enhanced shape data storage to properly save to the SQLite database
+- Improved shape loading when switching between tutorials
+- Added verification to ensure shapes are correctly saved and retrieved
+- Implemented detailed logging for shape operations to assist with future debugging
+
 ### Markup Enhancements (2024-07-10)
 - Improved markup handling to allow editing shapes until export
 - Shapes are now stored in memory and can be edited multiple times

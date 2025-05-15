@@ -94,6 +94,17 @@ The application uses SQLite to store project data with the following schema:
     -   `windowTitle`: TEXT - title of the window
     -   `keyboardShortcut`: TEXT - key combination used
 
+-   **Shapes:** Markup annotations for screenshots
+    -   `id`: TEXT PRIMARY KEY - unique identifier
+    -   `stepId`: TEXT NOT NULL - references steps.id
+    -   `imagePath`: TEXT NOT NULL - path to the image being annotated
+    -   `type`: TEXT NOT NULL - shape type ('ellipse', 'arrow', 'line', 'rectangle')
+    -   `startX`: REAL NOT NULL - starting X coordinate
+    -   `startY`: REAL NOT NULL - starting Y coordinate
+    -   `endX`: REAL NOT NULL - ending X coordinate
+    -   `endY`: REAL NOT NULL - ending Y coordinate
+    -   `color`: TEXT NOT NULL - color of the shape
+
 -   **Assets:** Additional files associated with a tutorial
     -   `id`: TEXT PRIMARY KEY - unique identifier
     -   `tutorialId`: TEXT NOT NULL - references tutorials.id
@@ -136,6 +147,8 @@ The application uses a combination of React component state and global stores (u
 1. User creates a project and tutorial
 2. Recording tab captures screenshots and step information
 3. StepsTab allows editing steps, descriptions, and annotating images
-   - **Markup shapes are stored in memory and associated with image paths**
-   - **Original images are preserved until export**
-4. ExportTab generates documentation with embedded markups 
+   - Markup shapes are stored both in memory (for performance) and in the SQLite database (for persistence)
+   - Shapes are loaded from the database when switching between tutorials or reopening the application
+   - When markup is saved, the ShapeRepository ensures all shapes are properly stored with references to their step and image
+   - Original images are preserved until export
+4. ExportTab generates documentation with embedded markups using the stored shape data 
