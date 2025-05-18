@@ -28,7 +28,7 @@ export class RecordingService extends EventEmitter {
     private tempDir: string;
     private hookActive: boolean = false;
     private lastCaptureTime: number = 0;
-    private captureDebounceTime: number = 1000; // 1 second debounce
+    private captureDebounceTime: number = 50; // Reduced from 1000ms to 50ms for near-instantaneous capture
     private mouseUpHandler: ((event: UiohookMouseEvent) => void) | null = null;
     private projectService: ProjectService;
     private activeProjectId: string | null = null;
@@ -100,6 +100,9 @@ export class RecordingService extends EventEmitter {
 
             console.log(`[RecordingService] Recording for project: ${this.activeProjectId}, tutorial: ${this.activeTutorialId}`);
             
+            // Start the screenshot buffering service for pre-click screenshots
+            this.screenshotService.startBuffering();
+            
             // Set recording state
             this.isRecording = true;
             this.isPaused = false;
@@ -131,6 +134,9 @@ export class RecordingService extends EventEmitter {
         console.log('[RecordingService] Stopping recording...');
         this.isRecording = false;
         this.isPaused = false;
+        
+        // Stop the screenshot buffering service
+        this.screenshotService.stopBuffering();
         
         // Clear active project/tutorial IDs when recording stops
         console.log(`[RecordingService] Clearing active project/tutorial: ${this.activeProjectId}/${this.activeTutorialId}`);
@@ -248,11 +254,16 @@ export class RecordingService extends EventEmitter {
             
             // Only capture if autoCapture is enabled
             if (this.isRecording && !this.isPaused && this.autoCapture) {
-                // Check if enough time has passed since the last capture
+                // Use a much shorter debounce time
                 if (currentTime - this.lastCaptureTime >= this.captureDebounceTime) {
                     console.log('[RecordingService] Capturing step due to mouseUp...');
                     this.lastCaptureTime = currentTime;
-                    this.captureStep('click', { x: event.x, y: event.y });
+                    
+                    // Store data first to minimize delay between event and capture
+                    const mousePosition = { x: event.x, y: event.y };
+                    
+                    // Initiate capture immediately with minimal preprocessing
+                    this.captureStep('click', mousePosition);
                 } else {
                     console.log(`[RecordingService] Ignoring mouseUp event - debounce time not elapsed (${currentTime - this.lastCaptureTime}ms / ${this.captureDebounceTime}ms)`);
                 }
@@ -316,37 +327,43 @@ export class RecordingService extends EventEmitter {
         console.log(`Attempting to capture step ${currentStepNumber} (type: ${type})`, data);
 
         try {
+            // Prepare all data synchronously before any async operations
             const timestamp = new Date().toISOString();
             const uniqueId = generateUniqueId();
             const screenshotFilename = `step_${uniqueId}.png`;
             const screenshotPath = path.join(this.tempDir, screenshotFilename);
-
-            await this.screenshotService.captureScreen(screenshotPath);
-            console.log(`Screenshot saved to: ${screenshotPath}`);
-
-            try {
-                // Use the captured step number for drawing
-                if (data) {
-                    // Use the new editable click marker instead of embedding in the image
-                    await this.imageService.createEditableClickMarker(screenshotPath, data, currentStepNumber);
-                    console.log(`Editable click marker created for step ${currentStepNumber}: ${screenshotPath}`);
-                }
-            } catch (drawError) {
-                console.error(`[RecordingService] Failed to create click marker on ${screenshotPath} for step ${currentStepNumber}:`, drawError);
-            }
-
+            
+            // Capture screenshot as early as possible with minimal pre-processing
+            const screenshotPromise = this.screenshotService.captureScreen(screenshotPath);
+            
+            // Create the step object in parallel
             const newStep: RecordingStep = {
-                // Use the truly unique ID
                 id: uniqueId,
-                number: currentStepNumber, // Use the captured step number
+                number: currentStepNumber,
                 timestamp: timestamp,
                 screenshotPath: screenshotPath,
-                mousePosition: data || { x: 0, y: 0 }, // Provide default if not available
+                mousePosition: data || { x: 0, y: 0 },
                 windowTitle: '',
                 description: type === 'click' 
                     ? `Clicked at (${data?.x || 0}, ${data?.y || 0})`
                     : 'Captured on Enter key press',
             };
+            
+            // Wait for screenshot to complete
+            await screenshotPromise;
+            console.log(`Screenshot saved to: ${screenshotPath}`);
+
+            // Create click marker in parallel with step recording
+            if (data) {
+                // Use the new editable click marker instead of embedding in the image
+                this.imageService.createEditableClickMarker(screenshotPath, data, currentStepNumber)
+                    .then(() => {
+                        console.log(`Editable click marker created for step ${currentStepNumber}: ${screenshotPath}`);
+                    })
+                    .catch(drawError => {
+                        console.error(`[RecordingService] Failed to create click marker on ${screenshotPath} for step ${currentStepNumber}:`, drawError);
+                    });
+            }
 
             // Add step to steps array
             this.steps.push(newStep);
@@ -401,6 +418,10 @@ export class RecordingService extends EventEmitter {
     public cleanup(): void {
         console.log('Cleaning up RecordingService...');
         this.unregisterShortcuts();
+        
+        // Make sure to stop buffering when cleaning up
+        this.screenshotService.stopBuffering();
+        
         if (this.hookActive) {
             try {
                 // Remove the mouseup event listener if it exists

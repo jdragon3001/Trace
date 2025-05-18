@@ -62,6 +62,7 @@ declare global {
         exportFormat: 'PDF' | 'DOCX';
       }) => Promise<string>;
       prepareShapesForExport: (tutorialId: string, shapeData: Record<string, Array<any>>) => Promise<boolean>;
+      exportPrepareShapes: (tutorialId: string, shapeData: Record<string, Array<any>>) => Promise<boolean>;
       loadImageAsDataUrl: (imagePath: string) => Promise<string>;
       
       // File operations

@@ -492,7 +492,11 @@ const MarkupModal: React.FC<{
         if (shape.id !== selectedShapeId) return shape;
         
         // Clone the original shape to modify
-        const updatedShape = { ...shape };
+        const updatedShape = { 
+          ...shape,
+          start: { ...shape.start },
+          end: { ...shape.end }
+        };
         
         if (dragMode === 'move') {
           // Calculate the new position in canvas coordinates
@@ -548,26 +552,38 @@ const MarkupModal: React.FC<{
             // without complex orientation checks
             switch (dragMode) {
               case 'resize-nw':
-                updatedShape.start = currentPosInImageCoords;
+                updatedShape.start = { ...currentPosInImageCoords };
                 break;
               case 'resize-ne':
-                updatedShape.start.y = currentPosInImageCoords.y;
-                updatedShape.end.x = currentPosInImageCoords.x;
+                updatedShape.start = { 
+                  x: updatedShape.start.x,
+                  y: currentPosInImageCoords.y 
+                };
+                updatedShape.end = { 
+                  x: currentPosInImageCoords.x,
+                  y: updatedShape.end.y 
+                };
                 break;
               case 'resize-sw':
-                updatedShape.start.x = currentPosInImageCoords.x;
-                updatedShape.end.y = currentPosInImageCoords.y;
+                updatedShape.start = { 
+                  x: currentPosInImageCoords.x,
+                  y: updatedShape.start.y 
+                };
+                updatedShape.end = { 
+                  x: updatedShape.end.x,
+                  y: currentPosInImageCoords.y 
+                };
                 break;
               case 'resize-se':
-                updatedShape.end = currentPosInImageCoords;
+                updatedShape.end = { ...currentPosInImageCoords };
                 break;
             }
           }
           else if (shape.type === 'line' || shape.type === 'arrow') {
             if (dragMode === 'resize-start') {
-              updatedShape.start = currentPosInImageCoords;
+              updatedShape.start = { ...currentPosInImageCoords };
             } else {
-              updatedShape.end = currentPosInImageCoords;
+              updatedShape.end = { ...currentPosInImageCoords };
             }
           }
           else if (shape.type === 'ellipse') {
@@ -576,19 +592,31 @@ const MarkupModal: React.FC<{
             switch (dragMode) {
               case 'resize-end':
                 // Free-form resizing in any direction
-                updatedShape.end = currentPosInImageCoords;
+                updatedShape.end = { ...currentPosInImageCoords };
                 break;
               case 'resize-e': // East - only change x (width)
-                updatedShape.end.x = currentPosInImageCoords.x;
+                updatedShape.end = {
+                  x: currentPosInImageCoords.x,
+                  y: updatedShape.end.y
+                };
                 break;
               case 'resize-w': // West - only change x (width)
-                updatedShape.end.x = 2 * shape.start.x - currentPosInImageCoords.x;
+                updatedShape.end = {
+                  x: 2 * shape.start.x - currentPosInImageCoords.x,
+                  y: updatedShape.end.y
+                };
                 break;
               case 'resize-n': // North - only change y (height)
-                updatedShape.end.y = 2 * shape.start.y - currentPosInImageCoords.y;
+                updatedShape.end = {
+                  x: updatedShape.end.x,
+                  y: 2 * shape.start.y - currentPosInImageCoords.y
+                };
                 break;
               case 'resize-s': // South - only change y (height)
-                updatedShape.end.y = currentPosInImageCoords.y;
+                updatedShape.end = {
+                  x: updatedShape.end.x,
+                  y: currentPosInImageCoords.y
+                };
                 break;
             }
           }
@@ -818,7 +846,11 @@ const MarkupModal: React.FC<{
         if (shape.id !== selectedShapeId) return shape;
         
         // Clone the original shape to modify
-        const updatedShape = { ...shape };
+        const updatedShape = { 
+          ...shape,
+          start: { ...shape.start },
+          end: { ...shape.end }
+        };
         
         // Find the display version of this shape for calculations
         const displayShape = displayShapes.find(s => s.id === shape.id);
@@ -867,6 +899,84 @@ const MarkupModal: React.FC<{
           }
         } 
         // Handle resize operations here if needed
+        else if (dragMode && dragMode.startsWith('resize-')) {
+          // Convert current position to image coordinates for proper scaling
+          const currentPosInImageCoords = {
+            x: currentPos.x / scaleFactor.x,
+            y: currentPos.y / scaleFactor.y
+          };
+          
+          if (shape.type === 'rectangle') {
+            // Simplified approach: directly update the point based on resize mode
+            switch (dragMode) {
+              case 'resize-nw':
+                updatedShape.start = { ...currentPosInImageCoords };
+                break;
+              case 'resize-ne':
+                updatedShape.start = { 
+                  x: updatedShape.start.x,
+                  y: currentPosInImageCoords.y 
+                };
+                updatedShape.end = { 
+                  x: currentPosInImageCoords.x,
+                  y: updatedShape.end.y 
+                };
+                break;
+              case 'resize-sw':
+                updatedShape.start = { 
+                  x: currentPosInImageCoords.x,
+                  y: updatedShape.start.y 
+                };
+                updatedShape.end = { 
+                  x: updatedShape.end.x,
+                  y: currentPosInImageCoords.y 
+                };
+                break;
+              case 'resize-se':
+                updatedShape.end = { ...currentPosInImageCoords };
+                break;
+            }
+          }
+          else if (shape.type === 'line' || shape.type === 'arrow') {
+            if (dragMode === 'resize-start') {
+              updatedShape.start = { ...currentPosInImageCoords };
+            } else {
+              updatedShape.end = { ...currentPosInImageCoords };
+            }
+          }
+          else if (shape.type === 'ellipse') {
+            // Update based on which cardinal direction is being manipulated
+            switch (dragMode) {
+              case 'resize-end':
+                updatedShape.end = { ...currentPosInImageCoords };
+                break;
+              case 'resize-e': // East - only change x (width)
+                updatedShape.end = {
+                  x: currentPosInImageCoords.x,
+                  y: updatedShape.end.y
+                };
+                break;
+              case 'resize-w': // West - only change x (width)
+                updatedShape.end = {
+                  x: 2 * shape.start.x - currentPosInImageCoords.x,
+                  y: updatedShape.end.y
+                };
+                break;
+              case 'resize-n': // North - only change y (height)
+                updatedShape.end = {
+                  x: updatedShape.end.x,
+                  y: 2 * shape.start.y - currentPosInImageCoords.y
+                };
+                break;
+              case 'resize-s': // South - only change y (height)
+                updatedShape.end = {
+                  x: updatedShape.end.x,
+                  y: currentPosInImageCoords.y
+                };
+                break;
+            }
+          }
+        }
         
         return updatedShape;
       });

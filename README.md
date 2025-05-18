@@ -8,6 +8,12 @@ OpenScribe is an Electron-based application for creating step-by-step guides wit
 - Record step-by-step workflows with automatic screenshots
 - Add text descriptions, keyboard shortcuts, and annotations
 - Export guides as PDF or DOCX documentation with customizable options
+- Screen recording with automatic or manual capture
+- Annotation tools for highlighting important UI elements
+- Step-by-step tutorial creation
+- Export to various documentation formats
+- Project management for organizing related tutorials
+- Screen buffering to ensure UI changes don't appear in screenshots prematurely
 
 ### Screen Capture
 - Full screen captures

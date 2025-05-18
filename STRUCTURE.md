@@ -43,6 +43,7 @@ Contains the core application code, split into main process, renderer process, a
 -   **Project Management:** ProjectService handles project saving, loading, and tracking in user data folder.
 -   **UI Framework:** React with TypeScript.
 -   **Database:** Uses SQLite via better-sqlite3 for project, tutorial, and step data management.
+-   **Screen Buffering:** Continuously captures the screen state in the background and uses the pre-click frame when a click is detected, ensuring UI changes don't appear in screenshots prematurely.
 
 ## UI Structure
 
