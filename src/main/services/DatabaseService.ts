@@ -134,6 +134,12 @@ export class DatabaseService {
       if (!result) {
         throw new Error(`Failed to create step for tutorial ${step.tutorialId}`);
       }
+      
+      // Update the tutorial's updatedAt timestamp when a step is created
+      if (step.tutorialId) {
+        await this.updateTutorialTimestamp(step.tutorialId);
+      }
+      
       return result;
     } catch (error: any) {
       console.error('[DatabaseService] Error creating step:', error);
@@ -177,10 +183,43 @@ export class DatabaseService {
       if (!result) {
         throw new Error(`Failed to update step ${step.id}`);
       }
+      
+      // Update the tutorial's updatedAt timestamp when a step is modified
+      if (step.tutorialId) {
+        await this.updateTutorialTimestamp(step.tutorialId);
+      }
+      
       return result;
     } catch (error: any) {
       console.error('[DatabaseService] Error updating step:', error);
       throw error;
+    }
+  }
+  
+  /**
+   * Updates a tutorial's updatedAt timestamp to the current time
+   */
+  public async updateTutorialTimestamp(tutorialId: string): Promise<void> {
+    await this.ensureInitialized();
+    
+    try {
+      console.log(`[DatabaseService] Updating timestamp for tutorial ${tutorialId}`);
+      const db = await this.dbManager.getDatabase();
+      const updatedAt = new Date().toISOString();
+      
+      const result = db.prepare(`
+        UPDATE tutorials
+        SET updatedAt = ?
+        WHERE id = ?
+      `).run(updatedAt, tutorialId);
+      
+      if (result.changes === 0) {
+        console.warn(`[DatabaseService] No tutorial found with ID ${tutorialId} to update timestamp`);
+      } else {
+        console.log(`[DatabaseService] Updated timestamp for tutorial ${tutorialId} to ${updatedAt}`);
+      }
+    } catch (error: any) {
+      console.error(`[DatabaseService] Error updating tutorial timestamp for ${tutorialId}:`, error);
     }
   }
   
@@ -191,7 +230,18 @@ export class DatabaseService {
     await this.ensureInitialized();
     
     try {
-      return await this.stepRepository.deleteStep(id);
+      // Get the tutorial ID before deleting the step
+      const step = await this.stepRepository.getStep(id);
+      const tutorialId = step?.tutorialId;
+      
+      const success = await this.stepRepository.deleteStep(id);
+      
+      // Update the tutorial's updatedAt timestamp if the step was successfully deleted
+      if (success && tutorialId) {
+        await this.updateTutorialTimestamp(tutorialId);
+      }
+      
+      return success;
     } catch (error: any) {
       console.error('[DatabaseService] Error deleting step:', error);
       return false;
@@ -199,15 +249,51 @@ export class DatabaseService {
   }
   
   /**
-   * Update the order of multiple steps
+   * Update the order of steps
    */
   public async updateStepsOrder(steps: Pick<Step, 'id' | 'order'>[]): Promise<boolean> {
     await this.ensureInitialized();
     
     try {
-      return await this.stepRepository.updateStepsOrder(steps);
+      const db = await this.dbManager.getDatabase();
+      
+      // Begin transaction
+      db.prepare('BEGIN TRANSACTION').run();
+      
+      // Get the tutorial ID from the first step (all steps should belong to the same tutorial)
+      let tutorialId: string | null = null;
+      if (steps.length > 0 && steps[0].id) {
+        const firstStep = await this.getStep(steps[0].id);
+        tutorialId = firstStep?.tutorialId || null;
+      }
+
+      // Update each step's order
+      const updateStmt = db.prepare('UPDATE steps SET `order` = ? WHERE id = ?');
+      
+      for (const step of steps) {
+        updateStmt.run(step.order, step.id);
+      }
+      
+      // Commit transaction
+      db.prepare('COMMIT').run();
+      
+      // Update the tutorial's updatedAt timestamp
+      if (tutorialId) {
+        await this.updateTutorialTimestamp(tutorialId);
+      }
+      
+      return true;
     } catch (error: any) {
       console.error('[DatabaseService] Error updating steps order:', error);
+      
+      // Rollback on error
+      try {
+        const db = await this.dbManager.getDatabase();
+        db.prepare('ROLLBACK').run();
+      } catch (rollbackError) {
+        console.error('[DatabaseService] Error rolling back transaction:', rollbackError);
+      }
+      
       return false;
     }
   }
@@ -698,17 +784,27 @@ export class DatabaseService {
           console.log(`[DatabaseService] Success: Shapes were verified to be saved in the database`);
         }
         
+        // Update tutorial timestamp when shapes are saved
+        try {
+          // Get the tutorial ID for this step
+          const step = await this.getStep(stepId);
+          if (step && step.tutorialId) {
+            await this.updateTutorialTimestamp(step.tutorialId);
+          }
+        } catch (error) {
+          console.error(`[DatabaseService] Error updating tutorial timestamp after saving shapes:`, error);
+        }
+
         return savedShapes;
       } catch (error) {
         console.error(`[DatabaseService] Error saving shapes:`, error);
-        throw error;
-      } finally {
-        // Always ensure foreign keys are re-enabled
+        // Re-enable foreign keys if an error occurred
         try {
           db.pragma('foreign_keys = ON');
-        } catch (error) {
-          console.error(`[DatabaseService] Error re-enabling foreign keys:`, error);
+        } catch (finalError) {
+          console.error(`[DatabaseService] Error re-enabling foreign keys:`, finalError);
         }
+        throw error;
       }
     } catch (error) {
       console.error(`[DatabaseService] Error in saveShapes:`, error);

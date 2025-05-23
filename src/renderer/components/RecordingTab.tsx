@@ -211,7 +211,7 @@ export const RecordingTab: React.FC<RecordingTabProps> = ({ projectId, tutorialI
             tutorialId: tutorialId,
             order: step.number,
             screenshotPath: step.screenshotPath,
-            actionText: step.description || '',
+            actionText: `[TITLE]Step ${step.number}[DESC]${step.description || ''}`,
             timestamp: step.timestamp,
             mousePosition: step.mousePosition,
             windowTitle: step.windowTitle || '',
@@ -225,6 +225,15 @@ export const RecordingTab: React.FC<RecordingTabProps> = ({ projectId, tutorialI
         if (window.electronAPI?.getStepsByTutorial) {
             const updatedSteps = await window.electronAPI.getStepsByTutorial(tutorialId);
             console.log(`[RecordingTab] Refreshed steps after save, now have ${updatedSteps?.length || 0} steps`);
+        }
+        
+        // Refresh sidebar to update recent tutorials list
+        try {
+            const refreshEvent = new CustomEvent('refresh-sidebar', { detail: { tutorialId } });
+            document.dispatchEvent(refreshEvent);
+            console.log('[RecordingTab] Dispatched refresh-sidebar event to update recent tutorials');
+        } catch (refreshError) {
+            console.error('[RecordingTab] Error refreshing sidebar:', refreshError);
         }
         
         return dbStep;
@@ -275,6 +284,12 @@ export const RecordingTab: React.FC<RecordingTabProps> = ({ projectId, tutorialI
       
       // Call the stopRecording API
       await window.electronAPI?.stopRecording();
+      
+      // Reset capture mode to fullScreen when stopping recording
+      if (window.electronAPI?.updateCaptureMode) {
+        console.log('[RecordingTab] Resetting capture mode to fullScreen after stopping recording');
+        window.electronAPI.updateCaptureMode('fullScreen');
+      }
       
       // Forcibly update local state to ensure UI reflects stopped state
       // even if the recording status event doesn't come through

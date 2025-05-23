@@ -73,7 +73,7 @@ export class RecordingService extends EventEmitter {
             .catch(err => console.error('Failed to create temp directory:', err));
     }
 
-    startRecording(): void {
+    async startRecording(): Promise<void> {
         try {
             if (this.isRecording) {
                 console.log('[RecordingService] startRecording called but already recording, ignoring');
@@ -103,14 +103,30 @@ export class RecordingService extends EventEmitter {
             // Start the screenshot buffering service for pre-click screenshots
             this.screenshotService.startBuffering();
             
-            // Set recording state
-            this.isRecording = true;
-            this.isPaused = false;
-            this.stepCounter = 0;
-            this.lastCaptureTime = 0; // Reset capture time on start
-            
-            // Log debug info about current state
-            console.log(`[RecordingService] Recording state set: isRecording=${this.isRecording}, isPaused=${this.isPaused}`);
+            // Get existing steps count before setting recording state
+            try {
+                const count = await this.getExistingStepsCount();
+                console.log(`[RecordingService] Found ${count} existing steps for tutorial ${this.activeTutorialId}`);
+                this.stepCounter = count;
+                
+                // Set recording state after getting step count
+                this.isRecording = true;
+                this.isPaused = false;
+                this.lastCaptureTime = 0; // Reset capture time on start
+                
+                // Log debug info about current state
+                console.log(`[RecordingService] Recording state set: isRecording=${this.isRecording}, isPaused=${this.isPaused}, starting at step=${this.stepCounter + 1}`);
+            } catch (error) {
+                console.error(`[RecordingService] Error getting existing steps count:`, error);
+                // Default behavior if we can't get steps
+                this.stepCounter = 0;
+                this.isRecording = true;
+                this.isPaused = false;
+                this.lastCaptureTime = 0;
+                
+                // Log debug info about current state
+                console.log(`[RecordingService] Recording state set: isRecording=${this.isRecording}, isPaused=${this.isPaused}, starting at step=1`);
+            }
             
             // Update the UI with the new recording state
             this.emitStateUpdate();
@@ -194,7 +210,7 @@ export class RecordingService extends EventEmitter {
         
         // Start recording command
         ipcMain.handle(IpcChannels.START_RECORDING, async (): Promise<void> => {
-            return this.startRecording();
+            return await this.startRecording();
         });
         
         // Stop recording command
@@ -227,6 +243,51 @@ export class RecordingService extends EventEmitter {
         ipcMain.on(IpcChannels.STEP_RECORDED_NOTIFICATION, (_event, step: RecordingStep) => {
             console.log(`[RecordingService] Received step recorded notification, rebroadcasting to all windows`);
             this.sendToRenderer(IpcChannels.STEP_CREATED, step);
+        });
+
+        // Handle capture mode update
+        ipcMain.handle(IpcChannels.UPDATE_CAPTURE_MODE, (_event, mode: 'fullScreen' | 'customRegion') => {
+            console.log(`[RecordingService] Setting capture mode to: ${mode}`);
+            this.screenshotService.setCaptureMode(mode);
+
+            // Don't start recording until the region has been selected if in custom region mode
+            if (mode === 'customRegion') {
+                this.isReadyToCapture = false;
+                console.log('[RecordingService] Capture paused until region is selected');
+            } else {
+                this.isReadyToCapture = true;
+                console.log('[RecordingService] Ready to capture (full screen mode)');
+            }
+            
+            return { success: true };
+        });
+        
+        // Handle region selection request
+        ipcMain.handle(IpcChannels.SELECT_CAPTURE_REGION, async () => {
+            try {
+                console.log('[RecordingService] Starting region selection...');
+                const region = await this.screenshotService.selectCaptureRegion();
+                
+                if (region) {
+                    console.log(`[RecordingService] Region selected: ${JSON.stringify(region)}`);
+                    // Enable capture now that we have a region
+                    this.isReadyToCapture = true;
+                    // Notify the renderer about the selected region
+                    this.sendToRenderer(IpcChannels.REGION_SELECTED, region);
+                    return region;
+                }
+                
+                console.log('[RecordingService] Region selection canceled or failed');
+                this.screenshotService.setCaptureMode('fullScreen');
+                this.isReadyToCapture = true;
+                return null;
+            } catch (error) {
+                console.error('[RecordingService] Error selecting region:', error);
+                // Fall back to full screen mode on error
+                this.screenshotService.setCaptureMode('fullScreen');
+                this.isReadyToCapture = true;
+                throw error;
+            }
         });
 
         ipcMain.handle(IpcChannels.GET_MEDIA_ACCESS_STATUS, async (_event, mediaType: string) => {
@@ -333,6 +394,25 @@ export class RecordingService extends EventEmitter {
             const screenshotFilename = `step_${uniqueId}.png`;
             const screenshotPath = path.join(this.tempDir, screenshotFilename);
             
+            // Get current capture region and mode from ScreenshotService
+            const captureRegion = this.screenshotService.getCaptureRegion();
+            const captureMode = this.screenshotService.getCaptureMode();
+            
+            // Adjust mouse coordinates for custom region if necessary
+            let adjustedMousePosition = data ? { ...data } : { x: 0, y: 0 };
+            
+            if (captureMode === 'customRegion' && captureRegion && data) {
+                // Adjust coordinates to be relative to the region
+                adjustedMousePosition = {
+                    x: data.x - captureRegion.x,
+                    y: data.y - captureRegion.y
+                };
+                console.log(`[RecordingService] Adjusted mouse position for custom region: 
+                    Original: (${data.x}, ${data.y}), 
+                    Region: (${captureRegion.x}, ${captureRegion.y}, ${captureRegion.width}, ${captureRegion.height}), 
+                    Adjusted: (${adjustedMousePosition.x}, ${adjustedMousePosition.y})`);
+            }
+            
             // Capture screenshot as early as possible with minimal pre-processing
             const screenshotPromise = this.screenshotService.captureScreen(screenshotPath);
             
@@ -342,10 +422,10 @@ export class RecordingService extends EventEmitter {
                 number: currentStepNumber,
                 timestamp: timestamp,
                 screenshotPath: screenshotPath,
-                mousePosition: data || { x: 0, y: 0 },
+                mousePosition: adjustedMousePosition,
                 windowTitle: '',
                 description: type === 'click' 
-                    ? `Clicked at (${data?.x || 0}, ${data?.y || 0})`
+                    ? `Clicked at (${adjustedMousePosition.x || 0}, ${adjustedMousePosition.y || 0})`
                     : 'Captured on Enter key press',
             };
             
@@ -356,7 +436,7 @@ export class RecordingService extends EventEmitter {
             // Create click marker in parallel with step recording
             if (data) {
                 // Use the new editable click marker instead of embedding in the image
-                this.imageService.createEditableClickMarker(screenshotPath, data, currentStepNumber)
+                this.imageService.createEditableClickMarker(screenshotPath, adjustedMousePosition, currentStepNumber)
                     .then(() => {
                         console.log(`Editable click marker created for step ${currentStepNumber}: ${screenshotPath}`);
                     })
@@ -413,6 +493,28 @@ export class RecordingService extends EventEmitter {
         globalShortcut.unregister('Enter');
         globalShortcut.unregister('Return');
         // Consider using unregisterAll() in production
+    }
+
+    /**
+     * Get the existing number of steps for the active tutorial
+     * @returns Promise resolving to the number of existing steps
+     */
+    private async getExistingStepsCount(): Promise<number> {
+        if (!this.activeTutorialId) {
+            console.warn('[RecordingService] Cannot get steps count: No active tutorial ID');
+            return 0;
+        }
+        
+        try {
+            // Get database service through the project service
+            const databaseService = this.projectService.getDatabaseService();
+            // Get steps for the tutorial
+            const steps = await databaseService.getStepsByTutorial(this.activeTutorialId);
+            return Array.isArray(steps) ? steps.length : 0;
+        } catch (error) {
+            console.error(`[RecordingService] Error getting steps count for tutorial ${this.activeTutorialId}:`, error);
+            return 0;
+        }
     }
 
     public cleanup(): void {

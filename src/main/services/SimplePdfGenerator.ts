@@ -47,7 +47,11 @@ export class SimplePdfGenerator {
         // Handle errors
         stream.on('error', (err) => {
           console.error('PDF stream error:', err);
-          reject(new Error(`Failed to write PDF file: ${err.message}`));
+          if ((err as NodeJS.ErrnoException).code === 'EBUSY' || err.message.includes('resource busy or locked')) {
+            reject(new Error(`Failed to write PDF file: EBUSY: resource busy or locked. open '${outputPath}'`));
+          } else {
+            reject(new Error(`Failed to write PDF file: ${err.message}`));
+          }
         });
         
         // Pipe document to output file
@@ -239,9 +243,9 @@ export class SimplePdfGenerator {
       
       if (options.includeNumbers) {
         doc.fontSize(16)
-           .fillColor('#2c5282') // Just use blue text for the step number
+           .fillColor('#000000')
            .font('Helvetica-Bold')
-           .text(`Step ${i + 1}: `, {
+           .text(`Step ${i + 1} | `, {
              continued: true,
              align: 'left'
            })
@@ -311,25 +315,10 @@ export class SimplePdfGenerator {
         
         doc.moveDown(0.5);
         
-        // Display the description with better formatting
-        doc.fontSize(12)
-           .fillColor('#555')  // Slightly lighter text for description header
-           .font('Helvetica')
-           .text('Description:', {
-             continued: true,
-             indent: 0,
-             underline: true
-           })
-           .font('Helvetica')
-           .fontSize(11)
-           .text(' (Step details)', {
-             continued: false,
-             underline: false
-           });
-        
+        // Display the description without the header
         doc.fontSize(11)
-           .moveDown(0.5)
            .fillColor('#333')
+           .font('Helvetica')
            .text(stepDescription, {
              continued: false,
              align: 'left',
@@ -340,10 +329,12 @@ export class SimplePdfGenerator {
       
       // Add a subtle separator line after each step (image or description)
       doc.moveDown(1.5); // Ensure enough space before the line
-      doc.strokeColor('#e2e8f0')
-         .moveTo(doc.page.margins.left, doc.y)
-         .lineTo(doc.page.width - doc.page.margins.right, doc.y)
-         .lineWidth(0.5)
+      // Draw a darker, thicker, and wider separator line
+      const lineInset = 16; // 16pt from each edge (smaller than default margin)
+      doc.strokeColor('#222222')
+         .moveTo(doc.page.margins.left - lineInset, doc.y)
+         .lineTo(doc.page.width - doc.page.margins.right + lineInset, doc.y)
+         .lineWidth(1)
          .stroke();
       doc.moveDown(0.5); // Space after line before footer or next step
       

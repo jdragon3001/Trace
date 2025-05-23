@@ -392,6 +392,25 @@ Implemented. The new database system should resolve issues with step saving, tut
 ### Status: 
 Implemented. Recording toolbar is now visible on the right side of the screen when the recording tab is active, allowing users to control capture settings.
 
+## 2024-08-20: Export File Busy Error Handling
+
+### Issues Encountered:
+*   **Problem:** Export functionality failing with "EBUSY" error when file is already open
+*   **Context:** 
+    1) Users would get "Export failed: Error invoking remote method 'tutorial-export': Failed to write PDF file: EBUSY: resource busy or locked. open '[filepath]'"
+    2) This occurred when users tried to export a file with the same name as an already open file
+    3) The error message was technical and didn't provide clear guidance on how to resolve the issue
+*   **Difficulty:** 
+    1) The error handling for EBUSY errors wasn't specifically handled
+    2) The error message wasn't user-friendly
+    3) There was no consistent way to display file busy errors across the application
+*   **Status:** Resolved - Implemented the following fixes:
+    1) Added specific error handling for EBUSY errors in the main process
+    2) Created a dedicated FileBusyError component for consistent error display
+    3) Improved error message display in the ExportTab to show more user-friendly messages
+    4) Added extraction of file paths from error messages to provide context in error displays
+    5) Enhanced the SimplePdfGenerator to properly detect and report EBUSY errors
+
 ## 2024-08-19
     *   **Problem:** Markup shape positioning issues when moving shapes
     *   **Context:** 
@@ -790,3 +809,29 @@ This ensures that markup properly appears in the exported PDF and DOCX files.
         2) Updated the loadStepsForTutorial function to parse this format when loading steps from the database
         3) Added similar formatting in the addStep function for consistency
         4) This provides a backward-compatible solution without requiring database schema changes
+
+*   **Date:** 2024-09-25
+    *   **Problem:** Step format tags "[TITLE]" and "[DESC]" showing in UI instead of being parsed
+    *   **Context:** 
+        1) The display of steps in the ExportTab was showing raw formatting tags like "[TITLE]test step name[DESC]" instead of parsing them
+        2) Steps created via the RecordingTab weren't using the proper format tags when saving steps
+    *   **Difficulty:** Multiple regex issues:
+        1) ExportTab had a regex pattern missing escape backslashes before the square brackets (/^[TITLE]/ instead of /^\[TITLE\]/)
+        2) RecordingTab wasn't applying the [TITLE][DESC] format when saving steps
+    *   **Status:** Resolved - Implemented the following fixes:
+        1) Fixed the regex pattern in ExportTab.tsx to properly escape square brackets
+        2) Updated the saveStepToDatabase function in RecordingTab.tsx to use the proper [TITLE][DESC] format
+        3) Ensured consistency across all step creation and display components
+
+*   **Date:** 2024-09-25
+    *   **Problem:** Export cancellation showing technical error message
+    *   **Context:** 
+        1) When users cancelled an export operation, they would see a technical error message: "Export failed: Error invoking remote method 'tutorial:export': Error: Export cancelled by user"
+        2) This error message was unnecessarily technical and could be confusing to users
+    *   **Difficulty:** UI presentation issue:
+        1) The error handling didn't distinguish between cancellation (user action) and actual errors
+        2) All non-successful export operations used the same red error styling
+    *   **Status:** Resolved - Implemented the following improvements:
+        1) Updated error handling in ExportTab to detect cancellation messages
+        2) Added a special case for displaying "Export cancelled" with neutral styling
+        3) Simplified the message to just "Export cancelled" without technical details

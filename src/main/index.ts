@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron'; // Uncomment ipcMain and dialog
+import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron'; // Uncomment ipcMain and dialog, added Menu import
 import path from 'path'; // Uncomment path
 import RecordingService from './services/RecordingService';
 import { protocol } from 'electron';
@@ -52,6 +52,9 @@ function createWindow() {
       enableWebSQL: true // Enable WebSQL for better compatibility
     }
   });
+
+  // Remove the menu bar (File, Edit, View, Window, Help)
+  mainWindow.setMenu(null);
 
   // Listen for keyboard events in the main process
   mainWindow.webContents.on('before-input-event', (event, input) => {
@@ -229,9 +232,22 @@ function registerIpcHandlers() {
         id: tutorial.id || tutorialId // Ensure ID is defined
       };
       
-      const filePath = await exportServiceInstance.exportTutorial(tutorialData, steps as Step[], options);
-      console.log(`[ExportService] Tutorial exported successfully to: ${filePath}`);
-      return filePath;
+      try {
+        const filePath = await exportServiceInstance.exportTutorial(tutorialData, steps as Step[], options);
+        console.log(`[ExportService] Tutorial exported successfully to: ${filePath}`);
+        return filePath;
+      } catch (error) {
+        // Handle export-specific errors
+        console.error('[ExportService] Error in export operation:', error);
+        
+        // Check for cancellation first
+        if (error instanceof Error && error.message.includes('cancelled')) {
+          throw new Error('Export cancelled by user');
+        }
+        
+        // Re-throw the error to be handled by the main try-catch block
+        throw error;
+      }
     } catch (error) {
       console.error('[ExportService] Error exporting tutorial:', error);
       
@@ -243,6 +259,8 @@ function registerIpcHandlers() {
           throw new Error('Permission denied: You do not have permission to write to the selected location. Please choose a different location.');
         } else if (error.message.includes('EPERM')) {
           throw new Error('Permission error: The operation was not permitted. Try running the application with admin privileges.');
+        } else if (error.message.includes('EBUSY') || error.message.includes('resource busy or locked')) {
+          throw new Error('File busy: The file you are trying to save is currently open in another program. Please close the file and try again.');
         }
         throw error;
       }
@@ -286,6 +304,9 @@ function registerIpcHandlers() {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(async () => {
+  // Remove application menu completely
+  Menu.setApplicationMenu(null);
+  
   registerProtocolHandler(); // Register custom protocol handler
   
   // Initialize services first

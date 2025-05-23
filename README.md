@@ -148,4 +148,7 @@ This will generate platform-specific packages in the `out` directory.
 - Improved error handling throughout the tutorial step management flow
 - Added visibility detection to reload steps when returning to the application
 - Implemented verification checks to confirm database operations complete successfully
-- Better error feedback to users when operations fail 
+- Better error feedback to users when operations fail
+
+### Visual Improvements to Step Separator (2024-08-15)
+- The separator line under each step in the preview, PDF, and DOCX exports is now darker, thicker, and extends closer to the edges for improved visual clarity and separation between steps. 

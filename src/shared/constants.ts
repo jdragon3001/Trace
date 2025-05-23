@@ -7,6 +7,11 @@ export const IpcChannels = {
   RECORDING_STATUS: 'recording:status' as const,
   UPDATE_RECORDING_SETTINGS: 'recording:update-settings' as const,
   
+  // Region capture
+  UPDATE_CAPTURE_MODE: 'capture:update-mode' as const,
+  SELECT_CAPTURE_REGION: 'capture:select-region' as const,
+  REGION_SELECTED: 'capture:region-selected' as const,
+  
   // Step management
   GET_STEPS: 'steps:get' as const,
   ADD_STEP: 'steps:add' as const,

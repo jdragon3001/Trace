@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Select Capture Region</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: rgba(0, 0, 0, 0.4);
+            font-family: Arial, sans-serif;
+            cursor: crosshair;
+            user-select: none;
+        }
+        
+        #instructions {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            text-align: center;
+            z-index: 100;
+        }
+        
+        #selection-box {
+            position: absolute;
+            border: 2px solid #39f;
+            background-color: rgba(51, 153, 255, 0.1);
+            display: none;
+            pointer-events: none;
+        }
+        
+        #dimensions {
+            position: absolute;
+            background-color: #39f;
+            color: white;
+            padding: 2px 8px;
+            font-size: 12px;
+            border-radius: 3px;
+            display: none;
+            pointer-events: none;
+        }
+        
+        #actions {
+            position: absolute;
+            display: none;
+            background-color: #333;
+            border-radius: 5px;
+            padding: 5px;
+        }
+        
+        #actions button {
+            background-color: #39f;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            margin: 0 5px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        
+        #actions button:hover {
+            background-color: #007ad9;
+        }
+        
+        #cancel {
+            background-color: #f55 !important;
+        }
+        
+        #cancel:hover {
+            background-color: #d33 !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="instructions">Click and drag to select a region for capture. Press Escape to cancel.</div>
+    <div id="selection-box"></div>
+    <div id="dimensions"></div>
+    <div id="actions">
+        <button id="confirm">Confirm Selection</button>
+        <button id="cancel">Cancel</button>
+    </div>
+    
+    <script>
+        // Use CommonJS-style require since this is loaded directly without bundling
+        const { ipcRenderer } = require('electron');
+        
+        const selectionBox = document.getElementById('selection-box');
+        const dimensionsDisplay = document.getElementById('dimensions');
+        const actionsPanel = document.getElementById('actions');
+        const confirmButton = document.getElementById('confirm');
+        const cancelButton = document.getElementById('cancel');
+        const instructions = document.getElementById('instructions');
+        
+        let isSelecting = false;
+        let startX = 0;
+        let startY = 0;
+        let endX = 0;
+        let endY = 0;
+        
+        // Debug helper
+        function debug(msg) {
+            console.log(msg);
+            instructions.textContent = msg;
+        }
+        
+        debug("Region selector loaded - click and drag to select");
+        
+        // Handle mouse down - start selection
+        document.addEventListener('mousedown', (e) => {
+            debug("Mouse down at " + e.clientX + "," + e.clientY);
+            
+            // Start the selection process
+            isSelecting = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            
+            // Hide the actions panel if it's visible
+            actionsPanel.style.display = 'none';
+            
+            // Reset the selection box
+            selectionBox.style.display = 'block';
+            selectionBox.style.left = `${startX}px`;
+            selectionBox.style.top = `${startY}px`;
+            selectionBox.style.width = '0';
+            selectionBox.style.height = '0';
+            
+            // Show dimensions display
+            dimensionsDisplay.style.display = 'block';
+            dimensionsDisplay.style.left = `${startX + 10}px`;
+            dimensionsDisplay.style.top = `${startY + 10}px`;
+            dimensionsDisplay.textContent = '0 × 0';
+            
+            // Prevent default behavior and event propagation
+            e.preventDefault();
+            e.stopPropagation();
+        });
+        
+        // Handle mouse move - update selection
+        document.addEventListener('mousemove', (e) => {
+            if (!isSelecting) return;
+            
+            debug("Mouse move at " + e.clientX + "," + e.clientY);
+            
+            endX = e.clientX;
+            endY = e.clientY;
+            
+            // Calculate the width and height
+            const width = Math.abs(endX - startX);
+            const height = Math.abs(endY - startY);
+            
+            // Calculate top-left corner for the box
+            const left = Math.min(startX, endX);
+            const top = Math.min(startY, endY);
+            
+            // Update selection box
+            selectionBox.style.left = `${left}px`;
+            selectionBox.style.top = `${top}px`;
+            selectionBox.style.width = `${width}px`;
+            selectionBox.style.height = `${height}px`;
+            
+            // Update dimensions display
+            dimensionsDisplay.textContent = `${width} × ${height}`;
+            dimensionsDisplay.style.left = `${endX + 10}px`;
+            dimensionsDisplay.style.top = `${endY + 10}px`;
+            
+            // Prevent default behavior and event propagation
+            e.preventDefault();
+            e.stopPropagation();
+        });
+        
+        // Handle mouse up - end selection
+        document.addEventListener('mouseup', (e) => {
+            if (!isSelecting) return;
+            
+            debug("Mouse up at " + e.clientX + "," + e.clientY);
+            
+            isSelecting = false;
+            endX = e.clientX;
+            endY = e.clientY;
+            
+            // Calculate the dimensions
+            const width = Math.abs(endX - startX);
+            const height = Math.abs(endY - startY);
+            
+            // Only show action buttons if selection is meaningful
+            if (width > 10 && height > 10) {
+                // Position the action buttons near the selection
+                actionsPanel.style.display = 'block';
+                actionsPanel.style.left = `${Math.min(startX, endX) + width/2 - actionsPanel.offsetWidth/2}px`;
+                actionsPanel.style.top = `${Math.max(startY, endY) + 10}px`;
+                
+                debug("Selection complete: " + width + "x" + height);
+            } else {
+                // Reset if the selection is too small
+                selectionBox.style.display = 'none';
+                dimensionsDisplay.style.display = 'none';
+                
+                debug("Selection too small, try again");
+            }
+            
+            // Prevent default behavior and event propagation
+            e.preventDefault();
+            e.stopPropagation();
+        });
+        
+        // Confirm button click handler
+        confirmButton.addEventListener('click', () => {
+            // Calculate the region data
+            const x = Math.min(startX, endX);
+            const y = Math.min(startY, endY);
+            const width = Math.abs(endX - startX);
+            const height = Math.abs(endY - startY);
+            
+            const region = { x, y, width, height };
+            
+            debug("Confirming selection: " + JSON.stringify(region));
+            
+            // Send the region data back to main process using correct channel
+            try {
+                ipcRenderer.send('region-selected', region);
+            } catch (err) {
+                debug("Error sending region: " + err.toString());
+            }
+        });
+        
+        // Cancel button click handler
+        cancelButton.addEventListener('click', () => {
+            debug("Selection canceled");
+            ipcRenderer.send('region-selection-canceled');
+        });
+        
+        // Handle escape key to cancel
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                debug("Selection canceled (Escape key)");
+                ipcRenderer.send('region-selection-canceled');
+            }
+        });
+        
+        // Prevent context menu to avoid interference with selection
+        document.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            return false;
+        });
+    </script>
+</body>
+</html> 

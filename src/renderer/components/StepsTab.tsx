@@ -1311,9 +1311,10 @@ const MarkupModal: React.FC<{
 interface StepsTabProps {
   tutorialId?: string;
   realtimeSteps?: any[]; // Add this prop to accept realtime steps from App component
+  onTutorialEdit?: () => void; // Add this prop to notify when a tutorial is edited
 }
 
-export const StepsTab: React.FC<StepsTabProps> = ({ tutorialId, realtimeSteps = [] }) => {
+export const StepsTab: React.FC<StepsTabProps> = ({ tutorialId, realtimeSteps = [], onTutorialEdit }) => {
   const steps = useStepsStore((state) => state.steps);
   const addStoreStep = useStepsStore((state) => state.addStep);
   const setStoreSteps = useStepsStore((state) => state.setSteps);
@@ -1503,6 +1504,11 @@ export const StepsTab: React.FC<StepsTabProps> = ({ tutorialId, realtimeSteps = 
         if (verifyShapes.length === 0) {
           console.error('[Markup] CRITICAL: No shapes were found in the database after save! This indicates a database save failure.');
         }
+        
+        // Notify parent that tutorial was edited to refresh recent tutorials
+        if (onTutorialEdit) {
+          onTutorialEdit();
+        }
       } catch (error) {
         console.error('[Markup] Error saving shapes to database:', error);
         // Save to memory as fallback even if database fails
@@ -1530,7 +1536,7 @@ export const StepsTab: React.FC<StepsTabProps> = ({ tutorialId, realtimeSteps = 
     } catch (error) {
       console.error('[Markup] Error in handle save markup:', error);
     }
-  }, [steps, saveShapesForImage, getShapesForImage]);
+  }, [steps, saveShapesForImage, getShapesForImage, onTutorialEdit]);
   
   // Load steps for the tutorial when tutorialId changes
   useEffect(() => {
@@ -1601,6 +1607,9 @@ export const StepsTab: React.FC<StepsTabProps> = ({ tutorialId, realtimeSteps = 
       console.log('[StepsTab] Clearing existing shapes from store to ensure clean state');
       useStepsStore.getState().clearImageShapeData();
       
+      // Reset selected step
+      setSelectedStepId(null);
+      
       // Get steps from the repository
       const steps = await stepRepository.loadStepsForTutorial(tutorialId);
       
@@ -1649,6 +1658,9 @@ export const StepsTab: React.FC<StepsTabProps> = ({ tutorialId, realtimeSteps = 
         
         // Set all steps in one batch
         setStoreSteps(displaySteps);
+        
+        // Automatically select the first step
+        setSelectedStepId(displaySteps[0].originalId);
         
         console.log(`[StepsTab] Added ${displaySteps.length} steps to store`);
         
@@ -1811,6 +1823,15 @@ export const StepsTab: React.FC<StepsTabProps> = ({ tutorialId, realtimeSteps = 
         // Note: The title will be handled by the store state mapping
       });
       
+      // Refresh sidebar to update recent tutorials
+      try {
+        const refreshEvent = new CustomEvent('refresh-sidebar', { detail: { tutorialId } });
+        document.dispatchEvent(refreshEvent);
+        console.log('[StepsTab] Dispatched refresh-sidebar event after adding new step');
+      } catch (refreshError) {
+        console.error('[StepsTab] Error dispatching refresh event:', refreshError);
+      }
+      
       // Select the new step
       if (savedStep.id) {
         setSelectedStepId(savedStep.id);
@@ -1839,6 +1860,17 @@ export const StepsTab: React.FC<StepsTabProps> = ({ tutorialId, realtimeSteps = 
       
       // Save to database
       await window.electronAPI.reorderSteps(updatedSteps);
+      
+      // Refresh sidebar to update recent tutorials
+      if (tutorialId) {
+        try {
+          const refreshEvent = new CustomEvent('refresh-sidebar', { detail: { tutorialId } });
+          document.dispatchEvent(refreshEvent);
+          console.log('[StepsTab] Dispatched refresh-sidebar event after reordering steps');
+        } catch (refreshError) {
+          console.error('[StepsTab] Error dispatching refresh event:', refreshError);
+        }
+      }
       
       // Reload steps to refresh order
       if (tutorialId) {
@@ -1929,6 +1961,11 @@ export const StepsTab: React.FC<StepsTabProps> = ({ tutorialId, realtimeSteps = 
       
       // Save to database
       await window.electronAPI.updateStep(stepToSave);
+      
+      // Notify parent that tutorial was edited to refresh recent tutorials
+      if (onTutorialEdit) {
+        onTutorialEdit();
+      }
     } catch (error) {
       console.error('Error updating step:', error);
     }
@@ -2022,6 +2059,15 @@ export const StepsTab: React.FC<StepsTabProps> = ({ tutorialId, realtimeSteps = 
       addStepToStore(step);
     });
   }, [realtimeSteps]);
+  
+  // Ensure a step is always selected when steps are available
+  useEffect(() => {
+    // If we have steps but no step is selected, select the first one
+    if (steps.length > 0 && !selectedStepId) {
+      console.log('[StepsTab] No step selected but steps are available, selecting first step');
+      setSelectedStepId(steps[0].originalId);
+    }
+  }, [steps, selectedStepId]);
   
   // Helper to add a step to the store
   const addStepToStore = (step: any) => {
@@ -2191,7 +2237,7 @@ export const StepsTab: React.FC<StepsTabProps> = ({ tutorialId, realtimeSteps = 
                 <div className="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
                   <div className="flex items-center space-x-2">
                     <h2 className="font-medium text-gray-900 flex items-center">
-                      <span className="flex h-6 w-6 bg-blue-500 text-white rounded-full items-center justify-center text-xs mr-2">
+                      <span className="flex h-8 w-8 bg-blue-500 text-white rounded-full items-center justify-center text-sm mr-2">
                         {selectedStep.displayId}
                       </span>
                       <input 

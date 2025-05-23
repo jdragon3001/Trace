@@ -1,5 +1,6 @@
-import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
+import { contextBridge, ipcRenderer, IpcRendererEvent, shell } from 'electron';
 import { IpcChannels } from '../shared/constants';
+import { LICENSE_IPC_CHANNELS } from '../shared/constants/license-constants';
 import { MousePosition, RecordingStep } from '../shared/types'; // Correct path from src/main/preload.ts to src/shared/types.ts
 
 console.log('--- FULL PRELOAD SCRIPT EXECUTING --- ');
@@ -8,6 +9,15 @@ console.log('--- FULL PRELOAD SCRIPT EXECUTING --- ');
 try {
   console.log('[Preload] Attempting to expose window.electronAPI...');
   contextBridge.exposeInMainWorld('electronAPI', {
+    // Generic invoke method for any IPC channel
+    invoke: (channel: string, ...args: any[]) => ipcRenderer.invoke(channel, ...args),
+    
+    // Shell API for opening external links
+    shell: {
+      openExternal: (url: string) => shell.openExternal(url)
+    },
+    
+    // Recording APIs
     startRecording: () => ipcRenderer.invoke(IpcChannels.START_RECORDING),
     stopRecording: () => ipcRenderer.invoke(IpcChannels.STOP_RECORDING),
     pauseRecording: () => ipcRenderer.invoke(IpcChannels.PAUSE_RECORDING),
@@ -33,9 +43,36 @@ try {
         ipcRenderer.removeListener(IpcChannels.RECORDING_ERROR, listener);
       };
     },
+    
+    // License APIs
+    checkLicense: () => ipcRenderer.invoke(LICENSE_IPC_CHANNELS.CHECK_LICENSE),
+    authenticateUser: (credentials: any) => ipcRenderer.invoke(LICENSE_IPC_CHANNELS.AUTHENTICATE_USER, credentials),
+    logoutUser: () => ipcRenderer.invoke(LICENSE_IPC_CHANNELS.LOGOUT_USER),
+    getMachineInfo: () => ipcRenderer.invoke(LICENSE_IPC_CHANNELS.GET_MACHINE_INFO),
+    getSubscriptionStatus: () => ipcRenderer.invoke(LICENSE_IPC_CHANNELS.GET_SUBSCRIPTION_STATUS),
+    onLicenseStatusChanged: (callback: (status: any) => void) => {
+      const listener = (_event: IpcRendererEvent, status: any) => callback(status);
+      ipcRenderer.on(LICENSE_IPC_CHANNELS.LICENSE_STATUS_CHANGED, listener);
+      return () => {
+        ipcRenderer.removeListener(LICENSE_IPC_CHANNELS.LICENSE_STATUS_CHANGED, listener);
+      };
+    },
+    
     getSteps: (): Promise<unknown[]> => ipcRenderer.invoke(IpcChannels.GET_STEPS),
     addStep: (step: unknown) => ipcRenderer.send(IpcChannels.ADD_STEP, step),
     getAudioSources: (): Promise<unknown[]> => ipcRenderer.invoke('get-audio-sources'),
+    
+    // Region Selection APIs
+    updateCaptureMode: (mode: 'fullScreen' | 'customRegion') => ipcRenderer.invoke(IpcChannels.UPDATE_CAPTURE_MODE, mode),
+    selectCaptureRegion: () => ipcRenderer.invoke(IpcChannels.SELECT_CAPTURE_REGION),
+    onRegionSelected: (callback: (region: { x: number, y: number, width: number, height: number }) => void) => {
+      const listener = (_event: IpcRendererEvent, region: { x: number, y: number, width: number, height: number }) => callback(region);
+      ipcRenderer.on(IpcChannels.REGION_SELECTED, listener);
+      return () => {
+        ipcRenderer.removeListener(IpcChannels.REGION_SELECTED, listener);
+      };
+    },
+    
     // Project Management APIs
     getProjects: () => ipcRenderer.invoke(IpcChannels.GET_PROJECTS),
     getRecentProjects: () => ipcRenderer.invoke(IpcChannels.GET_RECENT_PROJECTS),

@@ -15,6 +15,14 @@ declare global {
       addStep: (step: RecordingStep) => void;
       getAudioSources: () => Promise<unknown[]>;
       
+      // Region Selection APIs
+      updateCaptureMode: (mode: 'fullScreen' | 'customRegion') => Promise<{ success: boolean }>;
+      selectCaptureRegion: () => Promise<{ x: number, y: number, width: number, height: number } | null>;
+      onRegionSelected: (callback: (region: { x: number, y: number, width: number, height: number }) => void) => (() => void) | undefined;
+      
+      // Step notification
+      notifyStepRecorded: (step: RecordingStep) => void;
+      
       // Project Management
       getProjects: () => Promise<Project[]>;
       getRecentProjects: () => Promise<Tutorial[]>;

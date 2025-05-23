@@ -155,16 +155,10 @@ export const TutorialList: React.FC<TutorialListProps> = ({
               </div>
               <div className="flex items-center justify-between text-sm text-gray-500">
                 <span>Updated: {formatDate(tutorial.updatedAt)}</span>
-                {tutorial.status !== 'draft' ? (
-                  tutorial.status === 'ready' ? (
-                    <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">
-                      Ready
-                    </span>
-                  ) : (
-                    <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
-                      Exported
-                    </span>
-                  )
+                {tutorial.status === 'ready' ? (
+                  <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">
+                    Ready
+                  </span>
                 ) : null}
               </div>
             </div>

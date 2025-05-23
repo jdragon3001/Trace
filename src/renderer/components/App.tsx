@@ -6,6 +6,7 @@ import {
   Cog6ToothIcon,
   QuestionMarkCircleIcon,
   ComputerDesktopIcon as ComputerDesktopIconSolid,
+  FolderIcon,
 } from '@heroicons/react/24/outline';
 
 import { RecordingTab } from './RecordingTab';
@@ -43,6 +44,7 @@ export const App: React.FC = () => {
   // Recording settings state
   const [autoCapture, setAutoCapture] = useState(true);
   const [autoCaptureEnter, setAutoCaptureEnter] = useState(false);
+  const [captureMode, setCaptureMode] = useState<'fullScreen' | 'customRegion'>('fullScreen');
 
   // Modal state
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
@@ -58,7 +60,7 @@ export const App: React.FC = () => {
   // Shared state for steps to ensure real-time updates across tabs
   const [realtimeSteps, setRealtimeSteps] = useState<any[]>([]);
   
-  // Listen for step recorded notifications
+  // Listen for step recorded notifications to refresh steps
   useEffect(() => {
     const handleStepCreated = (step: any) => {
       console.log('[App] Received step created notification:', step);
@@ -68,6 +70,32 @@ export const App: React.FC = () => {
     
     const removeListener = window.electronAPI?.onStepCreated(handleStepCreated);
     
+    // Add listener for sidebar refresh events (for recorded steps)
+    const handleRefreshSidebar = () => {
+      console.log('[App] Received sidebar refresh event from recording step');
+      refreshSidebar();
+    };
+    
+    document.addEventListener('refresh-sidebar', handleRefreshSidebar);
+    
+    return () => {
+      removeListener?.();
+      document.removeEventListener('refresh-sidebar', handleRefreshSidebar);
+    };
+  }, []);
+
+  // Listen for recording status changes to reset capture mode when recording stops
+  useEffect(() => {
+    const handleRecordingStatus = (state: { isRecording: boolean; isPaused: boolean }) => {
+      // If recording was stopped, reset capture mode to fullScreen
+      if (!state.isRecording && !state.isPaused) {
+        console.log('[App] Recording stopped, resetting capture mode to fullScreen');
+        setCaptureMode('fullScreen');
+      }
+    };
+    
+    const removeListener = window.electronAPI?.onRecordingStatus(handleRecordingStatus);
+    
     return () => {
       removeListener?.();
     };
@@ -76,6 +104,16 @@ export const App: React.FC = () => {
   // Function to clear realtime steps when switching tutorials
   const clearRealtimeSteps = () => {
     setRealtimeSteps([]);
+  };
+
+  // Function to refresh the sidebar (for when tutorials are edited)
+  const refreshSidebar = () => {
+    if (projectSidebarRef.current) {
+      console.log('[App] Refreshing sidebar after tutorial edit/creation to update recent tutorials list');
+      projectSidebarRef.current.refreshProjects();
+    } else {
+      console.warn('[App] Cannot refresh sidebar - projectSidebarRef is null');
+    }
   };
 
   // Send initial recording settings to main process when component mounts
@@ -197,6 +235,11 @@ export const App: React.FC = () => {
       
       // Update state - this is async
       setCurrentTutorial(tutorial);
+      
+      // Automatically switch to the EditSteps tab when a tutorial is selected
+      if (activeTab === 'Project') {
+        switchTab('EditSteps');
+      }
       console.log(`[App] Tutorial set in state (async): ${JSON.stringify(tutorial)}`);
       
       // Set flag to navigate after state update
@@ -253,7 +296,11 @@ export const App: React.FC = () => {
         await projectSidebarRef.current.refreshProjects();
       }
       
-      // Automatically switch to Record tab after tutorial creation
+      // Directly switch to Record tab after tutorial creation
+      console.log('[App] Directly switching to Record tab after tutorial creation');
+      switchTab('Record');
+      
+      // Also set the flag for the useEffect hook as a backup
       setNavigateToRecordTab(true);
       
       // Explicitly ensure expanded state for the project in the sidebar
@@ -308,6 +355,33 @@ export const App: React.FC = () => {
     });
   };
 
+  // Function to handle project deletion
+  const handleProjectDeleted = (projectId: string) => {
+    // Check if the deleted project is the one we're currently viewing
+    if (currentProject && currentProject.id === projectId) {
+      console.log(`[App] Current project ${projectId} was deleted, resetting state`);
+      // Clear current project and tutorial state
+      setCurrentProject(null);
+      setCurrentTutorial(null);
+      // Switch to the Projects tab
+      switchTab('Project');
+    }
+  };
+
+  // Function to handle tutorial deletion
+  const handleTutorialDeleted = (tutorialId: string) => {
+    // Check if the deleted tutorial is the one we're currently viewing
+    if (currentTutorial && currentTutorial.id === tutorialId) {
+      console.log(`[App] Current tutorial ${tutorialId} was deleted, resetting state`);
+      // Clear current tutorial state
+      setCurrentTutorial(null);
+      // If we're in a tab that requires a tutorial, switch back to Projects
+      if (activeTab !== 'Project') {
+        switchTab('Project');
+      }
+    }
+  };
+
   // Render tabs based on the active tab
   const renderTabs = () => {
     return (
@@ -324,6 +398,7 @@ export const App: React.FC = () => {
           <StepsTab 
             tutorialId={currentTutorial?.id}
             realtimeSteps={realtimeSteps} // Pass realtime steps to StepsTab
+            onTutorialEdit={refreshSidebar} // Pass refresh function to update sidebar
           />
         )}
         {activeTab === 'Export' && tabsState.Export.visible && (
@@ -355,9 +430,18 @@ export const App: React.FC = () => {
                   id="capture-mode"
                   name="capture-mode"
                   className="block w-full py-2 pl-3 pr-10 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-gray-500 sm:text-sm"
-                  defaultValue="Full Screen"
+                  onChange={(e) => {
+                    const newMode = e.target.value === 'Custom Region' ? 'customRegion' : 'fullScreen';
+                    setCaptureMode(newMode);
+                    window.electronAPI?.updateCaptureMode?.(newMode);
+                    if (newMode === 'customRegion' && window.electronAPI?.selectCaptureRegion) {
+                      window.electronAPI.selectCaptureRegion();
+                    }
+                  }}
+                  value={captureMode === 'customRegion' ? 'Custom Region' : 'Full Screen'}
                 >
                   <option>Full Screen</option>
+                  <option>Custom Region</option>
                 </select>
                 <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
                   <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 20 20" stroke="currentColor">
@@ -446,25 +530,28 @@ export const App: React.FC = () => {
         onTutorialSelect={handleTutorialSelect}
         onCreateProject={() => setShowNewProjectModal(true)}
         onCreateTutorial={handleCreateTutorial}
+        onProjectDeleted={handleProjectDeleted}
+        onTutorialDeleted={handleTutorialDeleted}
       />
       
       {/* Main Content Area */}
       <div className="flex flex-col flex-1">
         {/* Top Navigation */}
-        <nav className="flex items-center border-b border-gray-200 px-6 h-14 bg-white">
-          <div className="flex items-center space-x-1">
+        <nav className="flex items-center border-b border-gray-200 px-6 py-4 bg-white">
+          <div className="flex items-center space-x-2">
             <button
-              className={`px-3 py-1.5 text-sm rounded-md focus:outline-none flex items-center ${
+              className={`px-4 py-2 text-sm rounded-md focus:outline-none flex items-center ${
                 activeTab === 'Project' ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-100'
               }`}
               onClick={() => switchTab('Project')}
             >
-              <VideoCameraIcon className="h-4 w-4 mr-1" />
-              Projects
+              <FolderIcon className="h-4 w-4 mr-2" />
+              Project
             </button>
             <button
-              className={`px-3 py-1.5 text-sm rounded-md focus:outline-none flex items-center ${
-                activeTab === 'Record' ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-100'
+              className={`px-4 py-2 text-sm rounded-md focus:outline-none flex items-center ${
+                activeTab === 'Record' ? 'bg-blue-50 text-blue-600' : 
+                (!currentTutorial || !currentTutorial.id) ? 'text-gray-400 cursor-not-allowed' : 'text-gray-600 hover:bg-gray-100'
               }`}
               onClick={() => {
                 console.log("Record tab clicked, currentTutorial:", currentTutorial);
@@ -476,12 +563,13 @@ export const App: React.FC = () => {
               }}
               disabled={!currentTutorial || !currentTutorial.id}
             >
-              <ComputerDesktopIconSolid className="h-4 w-4 mr-1" />
+              <ComputerDesktopIconSolid className="h-4 w-4 mr-2" />
               Record
             </button>
             <button
-              className={`px-3 py-1.5 text-sm rounded-md focus:outline-none flex items-center ${
-                activeTab === 'EditSteps' ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-100'
+              className={`px-4 py-2 text-sm rounded-md focus:outline-none flex items-center ${
+                activeTab === 'EditSteps' ? 'bg-blue-50 text-blue-600' : 
+                (!currentTutorial || !currentTutorial.id) ? 'text-gray-400 cursor-not-allowed' : 'text-gray-600 hover:bg-gray-100'
               }`}
               onClick={() => {
                 if (currentTutorial && currentTutorial.id) {
@@ -492,12 +580,13 @@ export const App: React.FC = () => {
               }}
               disabled={!currentTutorial || !currentTutorial.id}
             >
-              <PencilSquareIcon className="h-4 w-4 mr-1" />
+              <PencilSquareIcon className="h-4 w-4 mr-2" />
               Edit Steps
             </button>
             <button
-              className={`px-3 py-1.5 text-sm rounded-md focus:outline-none flex items-center ${
-                activeTab === 'Export' ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-100'
+              className={`px-4 py-2 text-sm rounded-md focus:outline-none flex items-center ${
+                activeTab === 'Export' ? 'bg-blue-50 text-blue-600' : 
+                (!currentTutorial || !currentTutorial.id) ? 'text-gray-400 cursor-not-allowed' : 'text-gray-600 hover:bg-gray-100'
               }`}
               onClick={() => {
                 if (currentTutorial && currentTutorial.id) {
@@ -508,7 +597,7 @@ export const App: React.FC = () => {
               }}
               disabled={!currentTutorial || !currentTutorial.id}
             >
-              <ArrowDownTrayIcon className="h-4 w-4 mr-1" />
+              <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
               Export
             </button>
           </div>

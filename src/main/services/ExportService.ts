@@ -446,7 +446,7 @@ export class ExportService {
       const textColor = "333333";   // Dark Gray
       const lightGrayColor = "e2e8f0";
       const whiteColor = "FFFFFF";
-      const stepNumberColor = "2c5282";
+      const stepNumberColor = textColor; // Changed from "2c5282" (blue) to black
 
       const sections: docx.ISectionOptions[] = [];
       const titlePageChildren: Paragraph[] = [];
@@ -617,7 +617,7 @@ export class ExportService {
         const stepHeaderRuns: TextRun[] = [];
         if (options.includeStepNumbers) {
           stepHeaderRuns.push(new TextRun({
-            text: `Step ${i + 1}: `,
+            text: `Step ${i + 1} | `,
             size: 16 * 2, // PDF: 16pt
             bold: true,
             color: stepNumberColor,
@@ -668,16 +668,9 @@ export class ExportService {
 
         // Description
         if (stepDescription) {
-          stepPageChildren.push(new Paragraph({ spacing: { after: 100 } })); // Space before "Description:"
-          stepPageChildren.push(
-            new Paragraph({
-              children: [
-                new TextRun({ text: "Description:", size: 12 * 2, bold: false, color: "555555", font: "Helvetica", underline: { type: docx.UnderlineType.SINGLE, color: "555555"} }),
-                new TextRun({ text: " (Step details)", size: 11 * 2, bold: false, color: "555555", font: "Helvetica" }),
-              ],
-              spacing: { after: 100 }
-            })
-          );
+          stepPageChildren.push(new Paragraph({ spacing: { after: 100 } })); // Space before description text
+          
+          // Add the description without a title header
           stepPageChildren.push(
             new Paragraph({
               children: [new TextRun({ text: stepDescription, size: 11 * 2, color: textColor, font: "Helvetica" })],
@@ -689,10 +682,11 @@ export class ExportService {
         // Separator line after each step
         stepPageChildren.push(new Paragraph({
             children: [], // No text needed, just border
-            spacing: { before: 300, after: 100 }, // PDF: moveDown(1.5) before, moveDown(0.5) after
+            spacing: { before: 200, after: 100 }, // PDF: moveDown(1.5) before, moveDown(0.5) after
             border: {
-                bottom: { color: lightGrayColor, style: BorderStyle.SINGLE, size: 4 } // size is 0.5pt (4/8)
-            }
+                bottom: { color: '222222', style: BorderStyle.SINGLE, size: 6 } // 50% thinner (was 12)
+            },
+            indent: { left: 120, right: 120 } // Reduce indent for wider line (approx 0.17 inch)
         }));
       }
 

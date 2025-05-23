@@ -20,6 +20,8 @@ interface ProjectSidebarProps {
   onTutorialSelect: (tutorialId: string) => void;
   onCreateProject: () => void;
   onCreateTutorial: (projectId: string) => void;
+  onProjectDeleted?: (projectId: string) => void;
+  onTutorialDeleted?: (tutorialId: string) => void;
   className?: string;
 }
 
@@ -28,6 +30,8 @@ export const ProjectSidebar = forwardRef<ProjectSidebarRef, ProjectSidebarProps>
   onTutorialSelect,
   onCreateProject,
   onCreateTutorial,
+  onProjectDeleted,
+  onTutorialDeleted,
   className = '',
 }, ref) => {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -71,6 +75,12 @@ export const ProjectSidebar = forwardRef<ProjectSidebarRef, ProjectSidebarProps>
       const recentData = await window.electronAPI.getRecentProjects();
       
       console.log('[ProjectSidebar] Loaded projects:', projectsData);
+      console.log(`[ProjectSidebar] Loaded ${recentData.length} recent tutorials sorted by last updated`);
+      if (recentData.length > 0) {
+        console.log('[ProjectSidebar] Most recent tutorial:', recentData[0].title, 
+          'updated at:', recentData[0].updatedAt);
+      }
+      
       setProjects(projectsData);
       setRecentTutorials(recentData);
       
@@ -191,6 +201,10 @@ export const ProjectSidebar = forwardRef<ProjectSidebarRef, ProjectSidebarProps>
     if (confirm('Are you sure you want to delete this project? This will delete all tutorials inside it and cannot be undone.')) {
       try {
         await window.electronAPI.deleteProject(projectId);
+        // Notify parent component of deletion
+        if (onProjectDeleted) {
+          onProjectDeleted(projectId);
+        }
         // Refresh the projects list
         await loadData();
       } catch (error) {
@@ -208,6 +222,10 @@ export const ProjectSidebar = forwardRef<ProjectSidebarRef, ProjectSidebarProps>
     if (confirm('Are you sure you want to delete this tutorial? This cannot be undone.')) {
       try {
         await window.electronAPI.deleteTutorial(tutorialId);
+        // Notify parent component of deletion
+        if (onTutorialDeleted) {
+          onTutorialDeleted(tutorialId);
+        }
         // Refresh the projects and tutorials
         await loadData();
       } catch (error) {
@@ -219,8 +237,8 @@ export const ProjectSidebar = forwardRef<ProjectSidebarRef, ProjectSidebarProps>
 
   return (
     <div className={`w-64 bg-white flex flex-col h-full border-r border-gray-200 ${className}`} ref={dropdownRef}>
-      <div className="p-4 border-b border-gray-200">
-        <h2 className="text-lg font-medium text-gray-700">Projects</h2>
+      <div className="px-4 py-4 border-b border-gray-200">
+        <h2 className="text-xl font-semibold text-gray-800">Trace</h2>
       </div>
       
       <div className="flex-1 overflow-y-auto px-2 py-3 space-y-6">
@@ -233,6 +251,64 @@ export const ProjectSidebar = forwardRef<ProjectSidebarRef, ProjectSidebarProps>
             <PlusCircleIcon className="h-5 w-5 mr-2 text-gray-500" />
             <span>New Project</span>
           </button>
+        </div>
+        
+        {/* Recent Tutorials Section */}
+        <div>
+          <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider px-4 pb-2">
+            RECENT TUTORIALS
+          </h3>
+          
+          {isLoading ? (
+            <div className="px-4 py-2 text-sm text-gray-500">Loading recent tutorials...</div>
+          ) : recentTutorials.length === 0 ? (
+            <div className="px-4 py-2 text-sm text-gray-500">No recent tutorials</div>
+          ) : (
+            <div>
+              {recentTutorials.slice(0, 5).map(tutorial => (
+                <div
+                  key={tutorial.id || 'unknown'}
+                  className={`flex items-center px-4 py-2 text-sm cursor-pointer group ${
+                    selectedTutorialId === tutorial.id
+                      ? 'bg-gray-100 text-gray-800'
+                      : 'hover:bg-gray-50 text-gray-600'
+                  }`}
+                  onClick={() => tutorial.id && handleTutorialClick(tutorial.id)}
+                >
+                  <ClockIcon className="h-4 w-4 mr-2 flex-shrink-0 text-gray-400" />
+                  <div className="flex flex-col flex-1 min-w-0">
+                    <span className="truncate" title={tutorial.title}>
+                      {tutorial.title}
+                    </span>
+                    <span className="text-xs text-gray-400">{formatDate(tutorial.updatedAt)}</span>
+                  </div>
+                  
+                  <div className="relative">
+                    <button 
+                      className="p-1 opacity-0 group-hover:opacity-100 hover:bg-gray-200 rounded"
+                      title="Tutorial options"
+                      onClick={(e) => tutorial.id && toggleDropdown(`recent-${tutorial.id}`, e)}
+                    >
+                      <EllipsisHorizontalIcon className="h-4 w-4 text-gray-500" />
+                    </button>
+                    
+                    {/* Recent Tutorial Options Dropdown */}
+                    {tutorial.id && activeDropdown === `recent-${tutorial.id}` && (
+                      <div className="absolute right-0 mt-1 py-1 w-40 bg-white rounded-md shadow-lg z-10 border border-gray-200">
+                        <button
+                          className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                          onClick={(e) => tutorial.id && handleDeleteTutorial(tutorial.id, e)}
+                        >
+                          <TrashIcon className="h-4 w-4 mr-2" />
+                          Delete Tutorial
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         
         {/* Projects Section */}
@@ -356,64 +432,6 @@ export const ProjectSidebar = forwardRef<ProjectSidebarRef, ProjectSidebarProps>
                       </button>
                     </div>
                   )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        
-        {/* Recent Tutorials Section */}
-        <div>
-          <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider px-4 pb-2">
-            RECENT TUTORIALS
-          </h3>
-          
-          {isLoading ? (
-            <div className="px-4 py-2 text-sm text-gray-500">Loading recent tutorials...</div>
-          ) : recentTutorials.length === 0 ? (
-            <div className="px-4 py-2 text-sm text-gray-500">No recent tutorials</div>
-          ) : (
-            <div>
-              {recentTutorials.slice(0, 5).map(tutorial => (
-                <div
-                  key={tutorial.id || 'unknown'}
-                  className={`flex items-center px-4 py-2 text-sm cursor-pointer group ${
-                    selectedTutorialId === tutorial.id
-                      ? 'bg-gray-100 text-gray-800'
-                      : 'hover:bg-gray-50 text-gray-600'
-                  }`}
-                  onClick={() => tutorial.id && handleTutorialClick(tutorial.id)}
-                >
-                  <ClockIcon className="h-4 w-4 mr-2 flex-shrink-0 text-gray-400" />
-                  <div className="flex flex-col flex-1 min-w-0">
-                    <span className="truncate" title={tutorial.title}>
-                      {tutorial.title}
-                    </span>
-                    <span className="text-xs text-gray-400">{formatDate(tutorial.updatedAt)}</span>
-                  </div>
-                  
-                  <div className="relative">
-                    <button 
-                      className="p-1 opacity-0 group-hover:opacity-100 hover:bg-gray-200 rounded"
-                      title="Tutorial options"
-                      onClick={(e) => tutorial.id && toggleDropdown(`recent-${tutorial.id}`, e)}
-                    >
-                      <EllipsisHorizontalIcon className="h-4 w-4 text-gray-500" />
-                    </button>
-                    
-                    {/* Recent Tutorial Options Dropdown */}
-                    {tutorial.id && activeDropdown === `recent-${tutorial.id}` && (
-                      <div className="absolute right-0 mt-1 py-1 w-40 bg-white rounded-md shadow-lg z-10 border border-gray-200">
-                        <button
-                          className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                          onClick={(e) => tutorial.id && handleDeleteTutorial(tutorial.id, e)}
-                        >
-                          <TrashIcon className="h-4 w-4 mr-2" />
-                          Delete Tutorial
-                        </button>
-                      </div>
-                    )}
-                  </div>
                 </div>
               ))}
             </div>
